@@ -1,0 +1,10 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/gongzhijie/Desktop/projects/git/galay-etcd/build/cmake_install.cmake",
+		"/Users/gongzhijie/Desktop/projects/git/galay-etcd/build/galay-etcd/cmake_install.cmake",
+		"/Users/gongzhijie/Desktop/projects/git/galay-etcd/build/test/cmake_install.cmake",
+		"/Users/gongzhijie/Desktop/projects/git/galay-etcd/build/benchmark/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

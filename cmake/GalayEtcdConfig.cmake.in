@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(galay-kernel)
+find_dependency(galay-utils)
+find_dependency(GalayHttp)
+find_dependency(spdlog)
+
+include("${CMAKE_CURRENT_LIST_DIR}/GalayEtcdTargets.cmake")
