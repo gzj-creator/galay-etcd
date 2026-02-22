@@ -22,11 +22,45 @@
 
 ## 构建
 
-依赖：系统需安装 `simdjson`（本项目通过 `pkg-config simdjson` 查找）。
+### 依赖
+
+- Galay 内部依赖（构建必需 + 联调推荐）：
+  - `galay-kernel`（构建必需）
+  - `galay-utils`（推荐）
+  - `galay-http`（推荐）
+- 第三方依赖：
+  - C++23 编译器
+  - CMake 3.20+
+  - `simdjson`（本项目通过 `pkg-config simdjson` 查找）
+  - `spdlog`
+
+### 依赖安装（macOS / Homebrew）
+
+```bash
+brew install cmake spdlog simdjson pkg-config
+```
+
+### 依赖安装（Ubuntu / Debian）
+
+```bash
+sudo apt-get update
+sudo apt-get install -y cmake g++ libspdlog-dev libsimdjson-dev pkg-config
+```
+
+### 拉取源码（统一联调推荐）
+
+```bash
+git clone https://github.com/gzj-creator/galay-kernel.git
+git clone https://github.com/gzj-creator/galay-utils.git
+git clone https://github.com/gzj-creator/galay-http.git
+git clone https://github.com/gzj-creator/galay-etcd.git
+```
+
+仅单独构建 `galay-etcd` 时，最小内部依赖为 `galay-kernel` 和 `galay-http`。
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+cmake --build build --parallel
 ```
 
 常用选项：
