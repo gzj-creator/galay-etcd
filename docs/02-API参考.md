@@ -7,7 +7,9 @@
 - `endpoint`：etcd HTTP 地址，默认 `http://127.0.0.1:2379`
 - `api_prefix`：API 前缀，默认 `/v3`
 
-### `AsyncEtcdConfig`
+### `EtcdNetworkConfig`
+
+网络传输参数，同步/异步客户端共用。旧名 `AsyncEtcdConfig` 仍可用（类型别名）。
 
 - `request_timeout`：请求超时，默认禁用
 - `buffer_size`：HTTP 会话 ring buffer，默认 `16384`
@@ -20,7 +22,7 @@
 
 ### `EtcdError`
 
-- 错误码包括：`INVALID_PARAM`、`NOT_CONNECTED`、`CONNECTION`、`TIMEOUT`、`HTTP`、`SERVER`、`PARSE` 等。
+- 错误码（`enum class EtcdErrorType`）：`Success`、`InvalidEndpoint`、`InvalidParam`、`NotConnected`、`Connection`、`Timeout`、`Send`、`Recv`、`Http`、`Server`、`Parse`、`Internal`。
 
 ## 2. `AsyncEtcdClient`（异步）
 

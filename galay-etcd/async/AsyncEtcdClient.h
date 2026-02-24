@@ -4,6 +4,8 @@
 #include "galay-etcd/async/AsyncEtcdConfig.h"
 #include "galay-etcd/base/EtcdConfig.h"
 #include "galay-etcd/base/EtcdError.h"
+#include "galay-etcd/base/EtcdNetworkConfig.h"
+#include "galay-etcd/base/EtcdTypes.h"
 #include "galay-etcd/base/EtcdValue.h"
 
 #include <galay-http/kernel/http/HttpSession.h>
@@ -32,63 +34,9 @@ using EtcdLeaseGrantResult = std::expected<int64_t, EtcdError>;
 class AsyncEtcdClient
 {
 public:
-    enum class PipelineOpType
-    {
-        Put,
-        Get,
-        Delete,
-    };
-
-    struct PipelineOp
-    {
-        PipelineOpType type = PipelineOpType::Put;
-        std::string key;
-        std::string value;
-        bool prefix = false;
-        std::optional<int64_t> limit = std::nullopt;
-        std::optional<int64_t> lease_id = std::nullopt;
-
-        static PipelineOp Put(std::string key,
-                              std::string value,
-                              std::optional<int64_t> lease_id = std::nullopt)
-        {
-            PipelineOp op;
-            op.type = PipelineOpType::Put;
-            op.key = std::move(key);
-            op.value = std::move(value);
-            op.lease_id = lease_id;
-            return op;
-        }
-
-        static PipelineOp Get(std::string key,
-                              bool prefix = false,
-                              std::optional<int64_t> limit = std::nullopt)
-        {
-            PipelineOp op;
-            op.type = PipelineOpType::Get;
-            op.key = std::move(key);
-            op.prefix = prefix;
-            op.limit = limit;
-            return op;
-        }
-
-        static PipelineOp Del(std::string key, bool prefix = false)
-        {
-            PipelineOp op;
-            op.type = PipelineOpType::Delete;
-            op.key = std::move(key);
-            op.prefix = prefix;
-            return op;
-        }
-    };
-
-    struct PipelineItemResult
-    {
-        PipelineOpType type = PipelineOpType::Put;
-        bool ok = false;
-        int64_t deleted_count = 0;
-        std::vector<EtcdKeyValue> kvs;
-    };
+    using PipelineOpType = galay::etcd::PipelineOpType;
+    using PipelineOp = galay::etcd::PipelineOp;
+    using PipelineItemResult = galay::etcd::PipelineItemResult;
 
     using ConnectIoAwaitable =
         decltype(std::declval<galay::async::TcpSocket&>().connect(std::declval<const galay::kernel::Host&>()));
@@ -309,7 +257,12 @@ public:
 
     AsyncEtcdClient(galay::kernel::IOScheduler* scheduler,
                EtcdConfig config = {},
-               AsyncEtcdConfig async_config = {});
+               EtcdNetworkConfig network_config = {});
+
+    AsyncEtcdClient(const AsyncEtcdClient&) = delete;
+    AsyncEtcdClient& operator=(const AsyncEtcdClient&) = delete;
+    AsyncEtcdClient(AsyncEtcdClient&&) = delete;
+    AsyncEtcdClient& operator=(AsyncEtcdClient&&) = delete;
 
     ConnectAwaitable connect();
     CloseAwaitable close();
@@ -352,7 +305,7 @@ private:
 private:
     galay::kernel::IOScheduler* m_scheduler;
     EtcdConfig m_config;
-    AsyncEtcdConfig m_async_config;
+    EtcdNetworkConfig m_network_config;
     std::string m_api_prefix;
     std::string m_host_header;
     galay::kernel::IPType m_ip_type = galay::kernel::IPType::IPV4;

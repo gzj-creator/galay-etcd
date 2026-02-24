@@ -6,26 +6,26 @@
 namespace galay::etcd
 {
 
-enum EtcdErrorType
+enum class EtcdErrorType
 {
-    ETCD_ERROR_SUCCESS = 0,
-    ETCD_ERROR_INVALID_ENDPOINT,
-    ETCD_ERROR_INVALID_PARAM,
-    ETCD_ERROR_NOT_CONNECTED,
-    ETCD_ERROR_CONNECTION,
-    ETCD_ERROR_TIMEOUT,
-    ETCD_ERROR_SEND,
-    ETCD_ERROR_RECV,
-    ETCD_ERROR_HTTP,
-    ETCD_ERROR_SERVER,
-    ETCD_ERROR_PARSE,
-    ETCD_ERROR_INTERNAL,
+    Success = 0,
+    InvalidEndpoint,
+    InvalidParam,
+    NotConnected,
+    Connection,
+    Timeout,
+    Send,
+    Recv,
+    Http,
+    Server,
+    Parse,
+    Internal,
 };
 
 class EtcdError
 {
 public:
-    EtcdError(EtcdErrorType type = ETCD_ERROR_SUCCESS);
+    EtcdError(EtcdErrorType type = EtcdErrorType::Success);
     EtcdError(EtcdErrorType type, std::string extra_msg);
 
     [[nodiscard]] EtcdErrorType type() const;

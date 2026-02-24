@@ -52,7 +52,7 @@ std::string EtcdError::message() const
 
 bool EtcdError::isOk() const
 {
-    return m_type == ETCD_ERROR_SUCCESS;
+    return m_type == EtcdErrorType::Success;
 }
 
 } // namespace galay::etcd

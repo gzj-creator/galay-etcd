@@ -1,0 +1,104 @@
+#include "galay-etcd/async/AsyncEtcdClient.h"
+
+#include <galay-kernel/kernel/Runtime.h>
+
+#include <atomic>
+#include <chrono>
+#include <iostream>
+#include <string>
+#include <thread>
+
+using galay::kernel::Coroutine;
+using galay::kernel::IOScheduler;
+using galay::kernel::Runtime;
+
+namespace
+{
+
+Coroutine runExample(IOScheduler* scheduler,
+                     std::string endpoint,
+                     std::atomic<bool>* done,
+                     int* exit_code)
+{
+    auto finish = [&](int code) {
+        *exit_code = code;
+        done->store(true, std::memory_order_release);
+    };
+
+    const std::string key = "/galay-etcd/example/async/" + std::to_string(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::high_resolution_clock::now().time_since_epoch()).count());
+    const std::string value = "hello-async";
+
+    galay::etcd::EtcdConfig cfg;
+    cfg.endpoint = endpoint;
+
+    galay::etcd::AsyncEtcdClient client(scheduler, cfg);
+    auto conn = co_await client.connect();
+    if (!conn.has_value()) {
+        std::cerr << "connect failed: " << conn.error().message() << '\n';
+        finish(1);
+        co_return;
+    }
+
+    auto put = co_await client.put(key, value);
+    if (!put.has_value()) {
+        std::cerr << "put failed: " << put.error().message() << '\n';
+        finish(2);
+        co_return;
+    }
+
+    auto get = co_await client.get(key);
+    if (!get.has_value()) {
+        std::cerr << "get failed: " << get.error().message() << '\n';
+        finish(3);
+        co_return;
+    }
+    if (client.lastKeyValues().empty()) {
+        std::cerr << "get returned empty kvs\n";
+        finish(4);
+        co_return;
+    }
+
+    std::cout << "async example ok: " << client.lastKeyValues().front().key
+              << " => " << client.lastKeyValues().front().value << '\n';
+
+    (void)co_await client.del(key);
+    (void)co_await client.close();
+
+    finish(0);
+}
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+    const std::string endpoint = argc > 1 ? argv[1] : "http://140.143.142.251:2379";
+
+    Runtime runtime(1, 1);
+    runtime.start();
+
+    auto* scheduler = runtime.getNextIOScheduler();
+    if (scheduler == nullptr) {
+        runtime.stop();
+        std::cerr << "failed to get io scheduler\n";
+        return 1;
+    }
+
+    std::atomic<bool> done{false};
+    int exit_code = 1;
+    scheduler->spawn(runExample(scheduler, endpoint, &done, &exit_code));
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (!done.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (!done.load(std::memory_order_acquire)) {
+        exit_code = 2;
+        std::cerr << "async example timeout\n";
+    }
+
+    runtime.stop();
+    return exit_code;
+}

@@ -1,0 +1,48 @@
+#include "galay-etcd/sync/EtcdClient.h"
+
+#include <chrono>
+#include <iostream>
+#include <string>
+
+int main(int argc, char** argv)
+{
+    const std::string endpoint = argc > 1 ? argv[1] : "http://140.143.142.251:2379";
+    const std::string key = "/galay-etcd/example/sync/" + std::to_string(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::high_resolution_clock::now().time_since_epoch()).count());
+    const std::string value = "hello-sync";
+
+    galay::etcd::EtcdConfig cfg;
+    cfg.endpoint = endpoint;
+
+    galay::etcd::EtcdClient client(cfg);
+    auto conn = client.connect();
+    if (!conn.has_value()) {
+        std::cerr << "connect failed: " << conn.error().message() << '\n';
+        return 1;
+    }
+
+    auto put = client.put(key, value);
+    if (!put.has_value()) {
+        std::cerr << "put failed: " << put.error().message() << '\n';
+        return 2;
+    }
+
+    auto get = client.get(key);
+    if (!get.has_value()) {
+        std::cerr << "get failed: " << get.error().message() << '\n';
+        return 3;
+    }
+
+    if (client.lastKeyValues().empty()) {
+        std::cerr << "get returned empty kvs\n";
+        return 4;
+    }
+
+    std::cout << "sync example ok: " << client.lastKeyValues().front().key
+              << " => " << client.lastKeyValues().front().value << '\n';
+
+    (void)client.del(key);
+    (void)client.close();
+    return 0;
+}

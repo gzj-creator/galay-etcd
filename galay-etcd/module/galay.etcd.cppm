@@ -8,6 +8,8 @@ export {
 #include "galay-etcd/base/EtcdConfig.h"
 #include "galay-etcd/base/EtcdError.h"
 #include "galay-etcd/base/EtcdValue.h"
+#include "galay-etcd/base/EtcdTypes.h"
+#include "galay-etcd/base/EtcdNetworkConfig.h"
 #include "galay-etcd/async/AsyncEtcdConfig.h"
 #include "galay-etcd/async/AsyncEtcdClient.h"
 #include "galay-etcd/sync/EtcdClient.h"

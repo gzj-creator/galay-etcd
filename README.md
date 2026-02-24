@@ -18,6 +18,7 @@
 - `galay-etcd/`：库源码
 - `test/`：功能验证程序
 - `benchmark/`：压测程序
+- `example/`：使用示例（sync/async）
 - `docs/`：文档
 
 ## 构建
@@ -67,6 +68,7 @@ cmake --build build --parallel
 
 - `-DGALAY_ETCD_BUILD_TESTS=ON/OFF`
 - `-DGALAY_ETCD_BUILD_BENCHMARKS=ON/OFF`
+- `-DGALAY_ETCD_BUILD_EXAMPLES=ON/OFF`
 - `-DGALAY_ETCD_BUILD_SHARED_LIBS=ON/OFF`
 - `-DGALAY_ETCD_ENABLE_IMPORT_COMPILATION=ON/OFF`
 
@@ -86,6 +88,22 @@ cmake --build build --parallel
 
 # pipeline 能力测试
 ./build/test/T3-EtcdPipeline http://140.143.142.251:2379
+
+# async smoke
+./build/test/T4-AsyncEtcdSmoke http://140.143.142.251:2379
+
+# async pipeline
+./build/test/T5-AsyncEtcdPipeline http://140.143.142.251:2379
+```
+
+## 示例程序
+
+```bash
+# sync 基础示例
+./build/example/E1-SyncBasic http://140.143.142.251:2379
+
+# async 基础示例
+./build/example/E2-AsyncBasic http://140.143.142.251:2379
 ```
 
 ## 压测
@@ -157,3 +175,7 @@ cmake --build build --parallel
 - [快速开始](docs/01-快速开始.md)
 - [API 参考](docs/02-API参考.md)
 - [测试与压测](docs/03-测试与压测.md)
+- [架构设计](docs/04-架构设计.md)
+- [示例代码](docs/05-示例代码.md)
+- [高级主题](docs/06-高级主题.md)
+- [常见问题](docs/07-常见问题.md)

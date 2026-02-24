@@ -6,6 +6,7 @@ option(GALAY_ETCD_INSTALL_MODULE_INTERFACE "Install C++ module interface files (
 option(GALAY_ETCD_ENABLE_IMPORT_COMPILATION "Enable C++ import/module compilation path" ON)
 option(GALAY_ETCD_BUILD_TESTS "Build galay-etcd tests" ON)
 option(GALAY_ETCD_BUILD_BENCHMARKS "Build galay-etcd benchmarks" ON)
+option(GALAY_ETCD_BUILD_EXAMPLES "Build galay-etcd examples" ON)
 
 set(GALAY_ETCD_CXX_STANDARD "23" CACHE STRING "C++ standard for galay-etcd")
 set_property(CACHE GALAY_ETCD_CXX_STANDARD PROPERTY STRINGS 20 23 26)
