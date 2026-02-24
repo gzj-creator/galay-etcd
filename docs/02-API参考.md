@@ -69,30 +69,30 @@
 - JSON 解析使用 `simdjson`，替代手写字符串扫描解析。
 - 请求响应解析改为“每个业务操作单次解析”：`PostJsonAwaitable` 仅处理 HTTP 层，业务层统一做 JSON 与 etcd `code/message` 校验。
 
-## 3. `EtcdClient`（协程封装）
+## 3. `EtcdClient`（同步阻塞）
 
-说明：`EtcdClient` 仅做协程接口封装，不包含 `promise/future` 阻塞桥接。
+说明：`EtcdClient` 不依赖 Awaitable，所有接口为阻塞调用，返回 `std::expected<void, EtcdError>`。
 
 ### 连接管理
 
-- `connect() -> ConnectAwaitable`
-- `close() -> CloseAwaitable`
+- `connect()`
+- `close()`
 - `connected() const`
 
 ### KV 能力
 
-- `put(key, value, lease_id?) -> PutAwaitable`
-- `get(key, prefix=false, limit?) -> GetAwaitable`
-- `del(key, prefix=false) -> DeleteAwaitable`
+- `put(key, value, lease_id?)`
+- `get(key, prefix=false, limit?)`
+- `del(key, prefix=false)`
 
 ### 租约能力
 
-- `grantLease(ttl_seconds) -> GrantLeaseAwaitable`
-- `keepAliveOnce(lease_id) -> KeepAliveAwaitable`
+- `grantLease(ttl_seconds)`
+- `keepAliveOnce(lease_id)`
 
 ### Pipeline 能力
 
-- `pipeline(std::vector<PipelineOp>) -> PipelineAwaitable`
+- `pipeline(std::vector<PipelineOp>)`
 - `lastPipelineResults()`
 
 ### 结果读取

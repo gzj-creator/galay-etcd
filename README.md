@@ -1,6 +1,6 @@
 # galay-etcd
 
-基于 `galay-kernel + galay-http` 的 etcd v3 客户端库，提供协程异步 API（对齐 `galay-redis` 范式）。
+基于 `galay-kernel + galay-http` 的 etcd v3 客户端库，提供异步协程 API 与同步阻塞 API。
 
 ## 功能
 
@@ -9,8 +9,8 @@
 - 前缀操作：`prefix get / prefix delete`
 - 租约：`lease grant / keepalive`
 - 异步客户端接口：`AsyncEtcdClient`
-- 协程客户端封装：`EtcdClient`（无 `promise/future` 阻塞桥接）
-- 传输层范式：`TcpSocket + HttpSessionAwaitable`（不依赖 `HttpClient` 封装）
+- 同步客户端接口：`EtcdClient`（阻塞 `connect/send/recv/close`）
+- 异步传输层范式：`TcpSocket + HttpSessionAwaitable`（不依赖 `HttpClient` 封装）
 - 错误模型：`std::expected<T, EtcdError>`
 
 ## 目录
@@ -135,6 +135,22 @@ cmake --build build --parallel
   - `put`（8 workers）：`227.587 ~ 228.914 ops/s`，`p95=36111 ~ 35834us`
   - `mixed`（8 workers）：`116.151 ops/s`，`p95=68661us`
   - `put`（32 workers）：`608.457 ops/s`，`p95=39222us`
+
+## 最新验证（2026-02-24）
+
+本次改动：`EtcdClient` 从协程等待体封装调整为同步阻塞接口（不返回 Awaitable）。
+
+```bash
+./build/test/T1-EtcdSmoke http://140.143.142.251:2379
+./build/test/T2-EtcdPrefixOps http://140.143.142.251:2379
+./build/test/T3-EtcdPipeline http://140.143.142.251:2379
+```
+
+结果摘要：
+
+- `T1-EtcdSmoke`：通过（put/get/delete + lease 生命周期通过）
+- `T2-EtcdPrefixOps`：通过（prefix range/delete 通过）
+- `T3-EtcdPipeline`：通过（pipeline txn 解析与行为通过）
 
 ## 文档
 
