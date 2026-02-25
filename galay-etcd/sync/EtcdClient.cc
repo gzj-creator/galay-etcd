@@ -510,9 +510,9 @@ std::expected<HttpResponseData, EtcdError> recvHttpResponse(int fd, size_t buffe
 
 } // namespace
 
-EtcdClient::EtcdClient(EtcdConfig config, EtcdNetworkConfig network_config)
+EtcdClient::EtcdClient(EtcdConfig config)
     : m_config(std::move(config))
-    , m_network_config(network_config)
+    , m_network_config(m_config)
     , m_api_prefix(normalizeApiPrefix(m_config.api_prefix))
 {
     auto endpoint_result = parseEndpoint(m_config.endpoint);

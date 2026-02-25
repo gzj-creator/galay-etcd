@@ -9,7 +9,7 @@
 #include <thread>
 
 using galay::etcd::AsyncEtcdClient;
-using galay::etcd::EtcdConfig;
+using galay::etcd::AsyncEtcdConfig;
 using galay::kernel::Coroutine;
 using galay::kernel::IOScheduler;
 using galay::kernel::Runtime;
@@ -39,7 +39,7 @@ Coroutine runSmoke(IOScheduler* scheduler,
         done->store(true, std::memory_order_release);
     };
 
-    EtcdConfig config;
+    AsyncEtcdConfig config;
     config.endpoint = endpoint;
     config.api_prefix = "/v3";
 

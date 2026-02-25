@@ -107,11 +107,10 @@ EtcdError mapKernelIoError(const galay::kernel::IOError& error,
 } // namespace
 
 AsyncEtcdClient::AsyncEtcdClient(galay::kernel::IOScheduler* scheduler,
-                       EtcdConfig config,
-                       EtcdNetworkConfig network_config)
+                                 AsyncEtcdConfig config)
     : m_scheduler(scheduler)
     , m_config(std::move(config))
-    , m_network_config(network_config)
+    , m_network_config(m_config)
     , m_api_prefix(normalizeApiPrefix(m_config.api_prefix))
 {
     auto endpoint_result = parseEndpoint(m_config.endpoint);

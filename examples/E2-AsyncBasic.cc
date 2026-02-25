@@ -25,12 +25,12 @@ Coroutine runExample(IOScheduler* scheduler,
         done->store(true, std::memory_order_release);
     };
 
-    const std::string key = "/galay-etcd/example/async/" + std::to_string(
+    const std::string key = "/galay-etcd/examples/async/" + std::to_string(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::high_resolution_clock::now().time_since_epoch()).count());
     const std::string value = "hello-async";
 
-    galay::etcd::EtcdConfig cfg;
+    galay::etcd::AsyncEtcdConfig cfg;
     cfg.endpoint = endpoint;
 
     galay::etcd::AsyncEtcdClient client(scheduler, cfg);

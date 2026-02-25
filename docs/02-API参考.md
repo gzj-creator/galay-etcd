@@ -1,4 +1,4 @@
-# API 参考
+# 02-API参考
 
 ## 1. 基础类型
 
@@ -9,7 +9,7 @@
 
 ### `EtcdNetworkConfig`
 
-网络传输参数，同步/异步客户端共用。旧名 `AsyncEtcdConfig` 仍可用（类型别名）。
+网络传输参数基类，`EtcdConfig` / `AsyncEtcdConfig` 都继承该类型。
 
 - `request_timeout`：请求超时，默认禁用
 - `buffer_size`：HTTP 会话 ring buffer，默认 `16384`

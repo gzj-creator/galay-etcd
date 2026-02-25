@@ -22,5 +22,5 @@ if(GALAY_ETCD_BUILD_BENCHMARKS)
 endif()
 
 if(GALAY_ETCD_BUILD_EXAMPLES)
-    add_subdirectory(example)
+    add_subdirectory(examples)
 endif()

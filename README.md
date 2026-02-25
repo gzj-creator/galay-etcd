@@ -18,7 +18,7 @@
 - `galay-etcd/`：库源码
 - `test/`：功能验证程序
 - `benchmark/`：压测程序
-- `example/`：使用示例（sync/async）
+- `examples/`：使用示例（sync/async）
 - `docs/`：文档
 
 ## 构建
@@ -100,10 +100,10 @@ cmake --build build --parallel
 
 ```bash
 # sync 基础示例
-./build/example/E1-SyncBasic http://140.143.142.251:2379
+./build/examples/E1-SyncBasic http://140.143.142.251:2379
 
 # async 基础示例
-./build/example/E2-AsyncBasic http://140.143.142.251:2379
+./build/examples/E2-AsyncBasic http://140.143.142.251:2379
 ```
 
 ## 压测

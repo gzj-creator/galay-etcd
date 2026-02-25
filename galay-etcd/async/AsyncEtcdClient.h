@@ -2,7 +2,6 @@
 #define GALAY_ETCD_ASYNC_ETCD_CLIENT_H
 
 #include "galay-etcd/async/AsyncEtcdConfig.h"
-#include "galay-etcd/base/EtcdConfig.h"
 #include "galay-etcd/base/EtcdError.h"
 #include "galay-etcd/base/EtcdNetworkConfig.h"
 #include "galay-etcd/base/EtcdTypes.h"
@@ -256,8 +255,7 @@ public:
     };
 
     AsyncEtcdClient(galay::kernel::IOScheduler* scheduler,
-               EtcdConfig config = {},
-               EtcdNetworkConfig network_config = {});
+                    AsyncEtcdConfig config = {});
 
     AsyncEtcdClient(const AsyncEtcdClient&) = delete;
     AsyncEtcdClient& operator=(const AsyncEtcdClient&) = delete;
@@ -304,7 +302,7 @@ private:
 
 private:
     galay::kernel::IOScheduler* m_scheduler;
-    EtcdConfig m_config;
+    AsyncEtcdConfig m_config;
     EtcdNetworkConfig m_network_config;
     std::string m_api_prefix;
     std::string m_host_header;

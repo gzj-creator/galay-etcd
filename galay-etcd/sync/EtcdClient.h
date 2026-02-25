@@ -26,8 +26,7 @@ public:
     using PipelineOp = galay::etcd::PipelineOp;
     using PipelineItemResult = galay::etcd::PipelineItemResult;
 
-    explicit EtcdClient(EtcdConfig config = {},
-                        EtcdNetworkConfig network_config = {});
+    explicit EtcdClient(EtcdConfig config = {});
     ~EtcdClient();
 
     EtcdClient(const EtcdClient&) = delete;

@@ -1,12 +1,20 @@
 #ifndef GALAY_ETCD_ASYNC_CONFIG_H
 #define GALAY_ETCD_ASYNC_CONFIG_H
 
-#include "galay-etcd/base/EtcdNetworkConfig.h"
+#include "galay-etcd/base/EtcdConfig.h"
 
 namespace galay::etcd
 {
 
-using AsyncEtcdConfig = EtcdNetworkConfig;
+struct AsyncEtcdConfig : EtcdConfig
+{
+    static AsyncEtcdConfig withTimeout(std::chrono::milliseconds timeout)
+    {
+        AsyncEtcdConfig cfg;
+        cfg.request_timeout = timeout;
+        return cfg;
+    }
+};
 
 } // namespace galay::etcd
 

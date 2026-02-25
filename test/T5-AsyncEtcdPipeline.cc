@@ -10,7 +10,7 @@
 #include <vector>
 
 using galay::etcd::AsyncEtcdClient;
-using galay::etcd::EtcdConfig;
+using galay::etcd::AsyncEtcdConfig;
 using galay::kernel::Coroutine;
 using galay::kernel::IOScheduler;
 using galay::kernel::Runtime;
@@ -40,7 +40,7 @@ Coroutine runPipelineCase(IOScheduler* scheduler,
         done->store(true, std::memory_order_release);
     };
 
-    EtcdConfig config;
+    AsyncEtcdConfig config;
     config.endpoint = endpoint;
 
     AsyncEtcdClient client(scheduler, config);
