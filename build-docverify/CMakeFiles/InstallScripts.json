@@ -1,0 +1,11 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/gongzhijie/Desktop/projects/git/galay-etcd/build-docverify/cmake_install.cmake",
+		"/Users/gongzhijie/Desktop/projects/git/galay-etcd/build-docverify/galay-etcd/cmake_install.cmake",
+		"/Users/gongzhijie/Desktop/projects/git/galay-etcd/build-docverify/test/cmake_install.cmake",
+		"/Users/gongzhijie/Desktop/projects/git/galay-etcd/build-docverify/benchmark/cmake_install.cmake",
+		"/Users/gongzhijie/Desktop/projects/git/galay-etcd/build-docverify/examples/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
