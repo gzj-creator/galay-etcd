@@ -33,7 +33,7 @@ Coroutine runExample(IOScheduler* scheduler,
     galay::etcd::AsyncEtcdConfig cfg;
     cfg.endpoint = endpoint;
 
-    galay::etcd::AsyncEtcdClient client(scheduler, cfg);
+    auto client = galay::etcd::AsyncEtcdClientBuilder().scheduler(scheduler).config(cfg).build();
     auto conn = co_await client.connect();
     if (!conn.has_value()) {
         std::cerr << "connect failed: " << conn.error().message() << '\n';

@@ -32,7 +32,7 @@ int main(int argc, char** argv)
     EtcdConfig config;
     config.endpoint = endpoint;
 
-    EtcdClient session(config);
+    auto session = galay::etcd::EtcdClientBuilder().config(config).build();
     auto conn = session.connect();
     if (!conn.has_value()) {
         return fail("connect failed: " + conn.error().message());

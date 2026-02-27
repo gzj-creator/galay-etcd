@@ -15,7 +15,7 @@ int main(int argc, char** argv)
     galay::etcd::EtcdConfig cfg;
     cfg.endpoint = endpoint;
 
-    galay::etcd::EtcdClient client(cfg);
+    auto client = galay::etcd::EtcdClientBuilder().config(cfg).build();
     auto conn = client.connect();
     if (!conn.has_value()) {
         std::cerr << "connect failed: " << conn.error().message() << '\n';

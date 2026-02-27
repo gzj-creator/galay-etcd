@@ -43,7 +43,7 @@ Coroutine runSmoke(IOScheduler* scheduler,
     config.endpoint = endpoint;
     config.api_prefix = "/v3";
 
-    AsyncEtcdClient client(scheduler, config);
+    auto client = galay::etcd::AsyncEtcdClientBuilder().scheduler(scheduler).config(config).build();
 
     auto conn = co_await client.connect();
     if (!conn.has_value()) {

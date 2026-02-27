@@ -64,7 +64,7 @@ void runWorker(std::string endpoint,
     EtcdConfig config;
     config.endpoint = std::move(endpoint);
 
-    EtcdClient session(config);
+    auto session = galay::etcd::EtcdClientBuilder().config(config).build();
     auto conn = session.connect();
     if (!conn.has_value()) {
         failure->fetch_add(ops_per_thread, std::memory_order_relaxed);

@@ -43,7 +43,7 @@ Coroutine runPipelineCase(IOScheduler* scheduler,
     AsyncEtcdConfig config;
     config.endpoint = endpoint;
 
-    AsyncEtcdClient client(scheduler, config);
+    auto client = galay::etcd::AsyncEtcdClientBuilder().scheduler(scheduler).config(config).build();
     auto conn = co_await client.connect();
     if (!conn.has_value()) {
         finish(fail("connect failed: " + conn.error().message()));

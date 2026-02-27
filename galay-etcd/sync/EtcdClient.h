@@ -12,12 +12,65 @@
 #include <expected>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace galay::etcd
 {
 
 using EtcdVoidResult = std::expected<void, EtcdError>;
+
+class EtcdClient;
+
+class EtcdClientBuilder
+{
+public:
+    EtcdClientBuilder& endpoint(std::string endpoint)
+    {
+        m_config.endpoint = std::move(endpoint);
+        return *this;
+    }
+
+    EtcdClientBuilder& apiPrefix(std::string prefix)
+    {
+        m_config.api_prefix = std::move(prefix);
+        return *this;
+    }
+
+    EtcdClientBuilder& requestTimeout(std::chrono::milliseconds timeout)
+    {
+        m_config.request_timeout = timeout;
+        return *this;
+    }
+
+    EtcdClientBuilder& bufferSize(size_t size)
+    {
+        m_config.buffer_size = size;
+        return *this;
+    }
+
+    EtcdClientBuilder& keepAlive(bool enabled)
+    {
+        m_config.keepalive = enabled;
+        return *this;
+    }
+
+    EtcdClientBuilder& config(EtcdConfig config)
+    {
+        m_config = std::move(config);
+        return *this;
+    }
+
+    EtcdClient build() const;
+
+    EtcdConfig buildConfig() const
+    {
+        return m_config;
+    }
+
+private:
+    EtcdConfig m_config{};
+};
 
 class EtcdClient
 {
@@ -96,5 +149,10 @@ private:
 };
 
 } // namespace galay::etcd
+
+inline galay::etcd::EtcdClient galay::etcd::EtcdClientBuilder::build() const
+{
+    return EtcdClient(m_config);
+}
 
 #endif // GALAY_ETCD_SYNC_CLIENT_H

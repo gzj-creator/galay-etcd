@@ -325,6 +325,68 @@ private:
     std::vector<PipelineItemResult> m_last_pipeline_results;
 };
 
+class AsyncEtcdClientBuilder
+{
+public:
+    AsyncEtcdClientBuilder& scheduler(galay::kernel::IOScheduler* scheduler)
+    {
+        m_scheduler = scheduler;
+        return *this;
+    }
+
+    AsyncEtcdClientBuilder& endpoint(std::string endpoint)
+    {
+        m_config.endpoint = std::move(endpoint);
+        return *this;
+    }
+
+    AsyncEtcdClientBuilder& apiPrefix(std::string prefix)
+    {
+        m_config.api_prefix = std::move(prefix);
+        return *this;
+    }
+
+    AsyncEtcdClientBuilder& requestTimeout(std::chrono::milliseconds timeout)
+    {
+        m_config.request_timeout = timeout;
+        return *this;
+    }
+
+    AsyncEtcdClientBuilder& bufferSize(size_t size)
+    {
+        m_config.buffer_size = size;
+        return *this;
+    }
+
+    AsyncEtcdClientBuilder& keepAlive(bool enabled)
+    {
+        m_config.keepalive = enabled;
+        return *this;
+    }
+
+    AsyncEtcdClientBuilder& config(AsyncEtcdConfig config)
+    {
+        m_config = std::move(config);
+        return *this;
+    }
+
+    AsyncEtcdClient build() const;
+
+    AsyncEtcdConfig buildConfig() const
+    {
+        return m_config;
+    }
+
+private:
+    galay::kernel::IOScheduler* m_scheduler = nullptr;
+    AsyncEtcdConfig m_config{};
+};
+
 } // namespace galay::etcd
+
+inline galay::etcd::AsyncEtcdClient galay::etcd::AsyncEtcdClientBuilder::build() const
+{
+    return AsyncEtcdClient(m_scheduler, m_config);
+}
 
 #endif // GALAY_ETCD_ASYNC_ETCD_CLIENT_H
