@@ -22,6 +22,16 @@
 #include <vector>
 #endif
 
+#if __has_include(<spdlog/sinks/stdout_color_sinks.h>)
+#include <spdlog/sinks/stdout_color_sinks.h>
+#endif
+#if __has_include(<spdlog/sinks/basic_file_sink.h>)
+#include <spdlog/sinks/basic_file_sink.h>
+#endif
+#if __has_include(<spdlog/spdlog.h>)
+#include <spdlog/spdlog.h>
+#endif
+
 #if __has_include(<galay-http/kernel/http/HttpSession.h>)
 #include <galay-http/kernel/http/HttpSession.h>
 #endif
@@ -46,6 +56,9 @@
 #endif
 #if __has_include("galay-etcd/base/EtcdError.h")
 #include "galay-etcd/base/EtcdError.h"
+#endif
+#if __has_include("galay-etcd/base/EtcdLog.h")
+#include "galay-etcd/base/EtcdLog.h"
 #endif
 #if __has_include("galay-etcd/base/EtcdValue.h")
 #include "galay-etcd/base/EtcdValue.h"

@@ -153,6 +153,8 @@ inline std::optional<std::string> decodeBase64(std::string_view data)
 {
     try {
         return galay::utils::Base64Util::Base64DecodeView(data);
+    } catch (const std::bad_alloc&) {
+        throw;
     } catch (...) {
         return std::nullopt;
     }
@@ -168,7 +170,7 @@ struct ParsedEndpoint
 
 inline std::expected<ParsedEndpoint, std::string> parseEndpoint(const std::string& endpoint)
 {
-    static const std::regex kEndpointRegex(
+    thread_local const std::regex kEndpointRegex(
         R"(^(http|https)://(\[[^\]]+\]|[^/:]+)(?::(\d+))?(?:/.*)?$)",
         std::regex::icase);
     std::smatch matches;
@@ -198,6 +200,8 @@ inline std::expected<ParsedEndpoint, std::string> parseEndpoint(const std::strin
     if (matches[3].matched) {
         try {
             port = std::stoi(matches[3].str());
+        } catch (const std::bad_alloc&) {
+            throw;
         } catch (...) {
             return std::unexpected("invalid endpoint port: " + endpoint);
         }
