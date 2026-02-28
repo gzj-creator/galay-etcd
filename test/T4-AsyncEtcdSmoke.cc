@@ -13,6 +13,7 @@ using galay::etcd::AsyncEtcdConfig;
 using galay::kernel::Coroutine;
 using galay::kernel::IOScheduler;
 using galay::kernel::Runtime;
+using galay::kernel::RuntimeBuilder;
 
 namespace
 {
@@ -135,7 +136,7 @@ int main(int argc, char** argv)
 {
     const std::string endpoint = argc > 1 ? argv[1] : "http://140.143.142.251:2379";
 
-    Runtime runtime(1, 1);
+    Runtime runtime = RuntimeBuilder().ioSchedulerCount(1).computeSchedulerCount(1).build();
     runtime.start();
 
     auto* scheduler = runtime.getNextIOScheduler();
