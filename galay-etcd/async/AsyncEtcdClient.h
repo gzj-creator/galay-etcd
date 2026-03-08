@@ -18,6 +18,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -239,6 +240,7 @@ public:
     class PipelineAwaitable : private JsonOpAwaitableBase
     {
     public:
+        PipelineAwaitable(AsyncEtcdClient& client, std::span<const PipelineOp> operations);
         PipelineAwaitable(AsyncEtcdClient& client, std::vector<PipelineOp> operations);
 
         PipelineAwaitable(const PipelineAwaitable&) = delete;
@@ -251,7 +253,7 @@ public:
         EtcdVoidResult await_resume();
 
     private:
-        std::vector<PipelineOp> m_operations;
+        std::vector<PipelineOpType> m_operation_types;
     };
 
     AsyncEtcdClient(galay::kernel::IOScheduler* scheduler,
@@ -276,6 +278,7 @@ public:
     DeleteAwaitable del(const std::string& key, bool prefix = false);
     GrantLeaseAwaitable grantLease(int64_t ttl_seconds);
     KeepAliveAwaitable keepAliveOnce(int64_t lease_id);
+    PipelineAwaitable pipeline(std::span<const PipelineOp> operations);
     PipelineAwaitable pipeline(std::vector<PipelineOp> operations);
 
     [[nodiscard]] bool connected() const;

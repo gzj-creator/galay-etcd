@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -101,6 +102,7 @@ public:
     EtcdVoidResult del(const std::string& key, bool prefix = false);
     EtcdVoidResult grantLease(int64_t ttl_seconds);
     EtcdVoidResult keepAliveOnce(int64_t lease_id);
+    EtcdVoidResult pipeline(std::span<const PipelineOp> operations);
     EtcdVoidResult pipeline(std::vector<PipelineOp> operations);
 
     [[nodiscard]] bool connected() const;
@@ -137,6 +139,11 @@ private:
 
     int m_socket_fd = -1;
     bool m_connected = false;
+    std::optional<std::chrono::milliseconds> m_applied_socket_timeout;
+    bool m_socket_timeout_cached = false;
+    std::string m_request_buffer;
+    std::string m_response_raw_buffer;
+    std::vector<char> m_recv_buffer;
 
     EtcdError m_last_error;
     bool m_last_bool = false;

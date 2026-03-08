@@ -17,6 +17,7 @@
 #include <limits>
 #include <optional>
 #include <regex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -311,13 +312,124 @@ inline bool maybeContainsEtcdErrorFields(const std::string& body)
         body.find("\"error\"") != std::string::npos;
 }
 
-inline std::expected<std::string, EtcdError> buildTxnBody(const std::vector<PipelineOp>& operations)
+inline std::expected<std::string, EtcdError> buildPutRequestBody(
+    std::string_view key,
+    std::string_view value,
+    std::optional<int64_t> lease_id = std::nullopt)
+{
+    if (key.empty()) {
+        return std::unexpected(EtcdError(EtcdErrorType::InvalidParam, "key must not be empty"));
+    }
+    if (lease_id.has_value() && lease_id.value() <= 0) {
+        return std::unexpected(EtcdError(EtcdErrorType::InvalidParam, "lease id must be positive"));
+    }
+
+    const std::string encoded_key = encodeBase64(key);
+    const std::string encoded_value = encodeBase64(value);
+    std::string body;
+    body.reserve(40 + encoded_key.size() + encoded_value.size() + (lease_id.has_value() ? 32 : 0));
+    body += "{\"key\":\"";
+    body += encoded_key;
+    body += "\",\"value\":\"";
+    body += encoded_value;
+    body += "\"";
+    if (lease_id.has_value()) {
+        body += ",\"lease\":\"";
+        body += std::to_string(lease_id.value());
+        body += "\"";
+    }
+    body += "}";
+    return body;
+}
+
+inline std::expected<std::string, EtcdError> buildGetRequestBody(
+    std::string_view key,
+    bool prefix = false,
+    std::optional<int64_t> limit = std::nullopt)
+{
+    if (key.empty()) {
+        return std::unexpected(EtcdError(EtcdErrorType::InvalidParam, "key must not be empty"));
+    }
+    if (limit.has_value() && limit.value() <= 0) {
+        return std::unexpected(EtcdError(EtcdErrorType::InvalidParam, "limit must be positive"));
+    }
+
+    const std::string encoded_key = encodeBase64(key);
+    std::string encoded_range_end;
+    if (prefix) {
+        encoded_range_end = encodeBase64(makePrefixRangeEnd(std::string(key)));
+    }
+
+    std::string body;
+    body.reserve(32 + encoded_key.size() + encoded_range_end.size() + (limit.has_value() ? 24 : 0));
+    body += "{\"key\":\"";
+    body += encoded_key;
+    body += "\"";
+    if (prefix) {
+        body += ",\"range_end\":\"";
+        body += encoded_range_end;
+        body += "\"";
+    }
+    if (limit.has_value()) {
+        body += ",\"limit\":";
+        body += std::to_string(limit.value());
+    }
+    body += "}";
+    return body;
+}
+
+inline std::expected<std::string, EtcdError> buildDeleteRequestBody(
+    std::string_view key,
+    bool prefix = false)
+{
+    if (key.empty()) {
+        return std::unexpected(EtcdError(EtcdErrorType::InvalidParam, "key must not be empty"));
+    }
+
+    const std::string encoded_key = encodeBase64(key);
+    std::string encoded_range_end;
+    if (prefix) {
+        encoded_range_end = encodeBase64(makePrefixRangeEnd(std::string(key)));
+    }
+
+    std::string body;
+    body.reserve(32 + encoded_key.size() + encoded_range_end.size());
+    body += "{\"key\":\"";
+    body += encoded_key;
+    body += "\"";
+    if (prefix) {
+        body += ",\"range_end\":\"";
+        body += encoded_range_end;
+        body += "\"";
+    }
+    body += "}";
+    return body;
+}
+
+inline std::expected<std::string, EtcdError> buildLeaseGrantRequestBody(int64_t ttl_seconds)
+{
+    if (ttl_seconds <= 0) {
+        return std::unexpected(EtcdError(EtcdErrorType::InvalidParam, "ttl must be positive"));
+    }
+    return std::string("{\"TTL\":") + std::to_string(ttl_seconds) + "}";
+}
+
+inline std::expected<std::string, EtcdError> buildLeaseKeepAliveRequestBody(int64_t lease_id)
+{
+    if (lease_id <= 0) {
+        return std::unexpected(EtcdError(EtcdErrorType::InvalidParam, "lease id must be positive"));
+    }
+    return std::string("{\"ID\":\"") + std::to_string(lease_id) + "\"}";
+}
+
+inline std::expected<std::string, EtcdError> buildTxnBody(std::span<const PipelineOp> operations)
 {
     if (operations.empty()) {
         return std::unexpected(EtcdError(EtcdErrorType::InvalidParam, "pipeline operations must not be empty"));
     }
 
     std::string body = "{\"compare\":[],\"success\":[";
+    body.reserve(operations.size() * 96 + 32);
     bool first = true;
     for (const auto& op : operations) {
         if (op.key.empty()) {
@@ -337,7 +449,13 @@ inline std::expected<std::string, EtcdError> buildTxnBody(const std::vector<Pipe
 
         switch (op.type) {
         case PipelineOpType::Put: {
-            body += "{\"request_put\":{\"key\":\"" + encodeBase64(op.key) + "\",\"value\":\"" + encodeBase64(op.value) + "\"";
+            const std::string encoded_key = encodeBase64(op.key);
+            const std::string encoded_value = encodeBase64(op.value);
+            body += "{\"request_put\":{\"key\":\"";
+            body += encoded_key;
+            body += "\",\"value\":\"";
+            body += encoded_value;
+            body += "\"";
             if (op.lease_id.has_value()) {
                 body += ",\"lease\":\"" + std::to_string(op.lease_id.value()) + "\"";
             }
@@ -345,10 +463,14 @@ inline std::expected<std::string, EtcdError> buildTxnBody(const std::vector<Pipe
             break;
         }
         case PipelineOpType::Get: {
-            body += "{\"request_range\":{\"key\":\"" + encodeBase64(op.key) + "\"";
+            const std::string encoded_key = encodeBase64(op.key);
+            body += "{\"request_range\":{\"key\":\"";
+            body += encoded_key;
+            body += "\"";
             if (op.prefix) {
-                const std::string range_end = makePrefixRangeEnd(op.key);
-                body += ",\"range_end\":\"" + encodeBase64(range_end) + "\"";
+                body += ",\"range_end\":\"";
+                body += encodeBase64(makePrefixRangeEnd(op.key));
+                body += "\"";
             }
             if (op.limit.has_value()) {
                 body += ",\"limit\":" + std::to_string(op.limit.value());
@@ -357,10 +479,14 @@ inline std::expected<std::string, EtcdError> buildTxnBody(const std::vector<Pipe
             break;
         }
         case PipelineOpType::Delete: {
-            body += "{\"request_delete_range\":{\"key\":\"" + encodeBase64(op.key) + "\"";
+            const std::string encoded_key = encodeBase64(op.key);
+            body += "{\"request_delete_range\":{\"key\":\"";
+            body += encoded_key;
+            body += "\"";
             if (op.prefix) {
-                const std::string range_end = makePrefixRangeEnd(op.key);
-                body += ",\"range_end\":\"" + encodeBase64(range_end) + "\"";
+                body += ",\"range_end\":\"";
+                body += encodeBase64(makePrefixRangeEnd(op.key));
+                body += "\"";
             }
             body += "}}";
             break;
@@ -370,6 +496,217 @@ inline std::expected<std::string, EtcdError> buildTxnBody(const std::vector<Pipe
 
     body += "],\"failure\":[]}";
     return body;
+}
+
+inline std::expected<std::string, EtcdError> buildTxnBody(const std::vector<PipelineOp>& operations)
+{
+    return buildTxnBody(std::span<const PipelineOp>(operations.data(), operations.size()));
+}
+
+inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineResponses(
+    const simdjson::dom::object& root,
+    std::span<const PipelineOpType> operation_types)
+{
+    auto succeeded_field = root["succeeded"];
+    if (!succeeded_field.error()) {
+        auto succeeded_result = succeeded_field.value_unsafe().get_bool();
+        if (!succeeded_result.error() && !succeeded_result.value_unsafe()) {
+            return std::unexpected(EtcdError(EtcdErrorType::Server, "pipeline txn returned succeeded=false"));
+        }
+    }
+
+    auto responses_field = root["responses"];
+    if (responses_field.error()) {
+        return std::unexpected(EtcdError(EtcdErrorType::Parse, "pipeline txn response missing responses field"));
+    }
+
+    auto responses_array_result = responses_field.value_unsafe().get_array();
+    if (responses_array_result.error()) {
+        return std::unexpected(makeJsonParseError("parse pipeline responses as array", responses_array_result.error()));
+    }
+
+    const auto responses = responses_array_result.value_unsafe();
+    if (responses.size() != operation_types.size()) {
+        return std::unexpected(EtcdError(
+            EtcdErrorType::Parse,
+            "pipeline responses size mismatch, expected=" + std::to_string(operation_types.size()) +
+                ", actual=" + std::to_string(responses.size())));
+    }
+
+    std::vector<PipelineItemResult> pipeline_results;
+    pipeline_results.reserve(operation_types.size());
+
+    for (size_t i = 0; i < operation_types.size(); ++i) {
+        auto item_object_result = responses.at(i).get_object();
+        if (item_object_result.error()) {
+            return std::unexpected(makeJsonParseError(
+                "parse pipeline response item as object",
+                item_object_result.error()));
+        }
+
+        const auto item_object = item_object_result.value_unsafe();
+        PipelineItemResult item;
+        item.type = operation_types[i];
+
+        switch (operation_types[i]) {
+        case PipelineOpType::Put: {
+            auto put_field = item_object["response_put"];
+            if (put_field.error()) {
+                return std::unexpected(EtcdError(
+                    EtcdErrorType::Parse,
+                    "pipeline put response missing response_put"));
+            }
+            auto put_object_result = put_field.value_unsafe().get_object();
+            if (put_object_result.error()) {
+                return std::unexpected(makeJsonParseError(
+                    "parse pipeline response_put as object",
+                    put_object_result.error()));
+            }
+            item.ok = true;
+            break;
+        }
+        case PipelineOpType::Get: {
+            auto range_field = item_object["response_range"];
+            if (range_field.error()) {
+                return std::unexpected(EtcdError(
+                    EtcdErrorType::Parse,
+                    "pipeline get response missing response_range"));
+            }
+            auto range_object_result = range_field.value_unsafe().get_object();
+            if (range_object_result.error()) {
+                return std::unexpected(makeJsonParseError(
+                    "parse pipeline response_range as object",
+                    range_object_result.error()));
+            }
+
+            auto kvs_result = parseKvsFromObject(
+                range_object_result.value_unsafe(),
+                "parse pipeline response_range");
+            if (!kvs_result.has_value()) {
+                return std::unexpected(kvs_result.error());
+            }
+            item.kvs = std::move(kvs_result.value());
+            item.ok = true;
+            break;
+        }
+        case PipelineOpType::Delete: {
+            auto del_field = item_object["response_delete_range"];
+            if (del_field.error()) {
+                return std::unexpected(EtcdError(
+                    EtcdErrorType::Parse,
+                    "pipeline delete response missing response_delete_range"));
+            }
+            auto del_object_result = del_field.value_unsafe().get_object();
+            if (del_object_result.error()) {
+                return std::unexpected(makeJsonParseError(
+                    "parse pipeline response_delete_range as object",
+                    del_object_result.error()));
+            }
+            item.deleted_count = findIntField(del_object_result.value_unsafe(), "deleted").value_or(0);
+            item.ok = true;
+            break;
+        }
+        }
+
+        pipeline_results.push_back(std::move(item));
+    }
+
+    return pipeline_results;
+}
+
+inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineResponses(
+    const simdjson::dom::object& root,
+    std::span<const PipelineOp> operations)
+{
+    std::vector<PipelineOpType> operation_types;
+    operation_types.reserve(operations.size());
+    for (const auto& op : operations) {
+        operation_types.push_back(op.type);
+    }
+    return parsePipelineResponses(root, std::span<const PipelineOpType>(operation_types.data(), operation_types.size()));
+}
+
+inline std::expected<void, EtcdError> parsePutResponse(const std::string& body)
+{
+    if (!maybeContainsEtcdErrorFields(body)) {
+        return {};
+    }
+
+    auto root = parseEtcdSuccessObject(body, "parse put response");
+    if (!root.has_value()) {
+        return std::unexpected(root.error());
+    }
+    return {};
+}
+
+inline std::expected<std::vector<EtcdKeyValue>, EtcdError> parseGetResponseKvs(const std::string& body)
+{
+    auto root = parseEtcdSuccessObject(body, "parse get response");
+    if (!root.has_value()) {
+        return std::unexpected(root.error());
+    }
+    return parseKvsFromObject(root.value(), "parse get response");
+}
+
+inline std::expected<int64_t, EtcdError> parseDeleteResponseDeletedCount(const std::string& body)
+{
+    auto root = parseEtcdSuccessObject(body, "parse delete response");
+    if (!root.has_value()) {
+        return std::unexpected(root.error());
+    }
+    return findIntField(root.value(), "deleted").value_or(0);
+}
+
+inline std::expected<int64_t, EtcdError> parseLeaseGrantResponseId(const std::string& body)
+{
+    auto root = parseEtcdSuccessObject(body, "parse lease grant response");
+    if (!root.has_value()) {
+        return std::unexpected(root.error());
+    }
+
+    const auto lease_id = findIntField(root.value(), "ID");
+    if (!lease_id.has_value()) {
+        return std::unexpected(EtcdError(EtcdErrorType::Parse, "lease grant response missing ID"));
+    }
+    return lease_id.value();
+}
+
+inline std::expected<int64_t, EtcdError> parseLeaseKeepAliveResponseId(
+    const std::string& body,
+    int64_t expected_lease_id)
+{
+    auto root = parseEtcdSuccessObject(body, "parse lease keepalive response");
+    if (!root.has_value()) {
+        return std::unexpected(root.error());
+    }
+
+    const auto response_id = findIntField(root.value(), "ID");
+    if (response_id.has_value() && response_id.value() != expected_lease_id) {
+        return std::unexpected(EtcdError(EtcdErrorType::Parse, "lease keepalive response id mismatch"));
+    }
+    return expected_lease_id;
+}
+
+inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineTxnResponse(
+    const std::string& body,
+    std::span<const PipelineOpType> operation_types)
+{
+    auto root = parseEtcdSuccessObject(body, "parse pipeline txn response");
+    if (!root.has_value()) {
+        return std::unexpected(root.error());
+    }
+    return parsePipelineResponses(root.value(), operation_types);
+}
+
+inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineTxnResponse(
+    const std::string& body,
+    std::span<const PipelineOp> operations)
+{
+    auto root = parseEtcdSuccessObject(body, "parse pipeline txn response");
+    if (!root.has_value()) {
+        return std::unexpected(root.error());
+    }
+    return parsePipelineResponses(root.value(), operations);
 }
 
 } // namespace galay::etcd::internal

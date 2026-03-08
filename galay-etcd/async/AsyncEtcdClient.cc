@@ -252,24 +252,13 @@ AsyncEtcdClient::PutAwaitable::PutAwaitable(AsyncEtcdClient& client,
     : JsonOpAwaitableBase(client)
 {
     m_client->resetLastOperation();
-    if (key.empty()) {
-        EtcdError error(EtcdErrorType::InvalidParam, "key must not be empty");
-        m_client->setError(error);
+    auto body = buildPutRequestBody(key, value, lease_id);
+    if (!body.has_value()) {
+        m_client->setError(body.error());
         return;
     }
 
-    std::string body = "{\"key\":\"" + encodeBase64(key) + "\",\"value\":\"" + encodeBase64(value) + "\"";
-    if (lease_id.has_value()) {
-        if (lease_id.value() <= 0) {
-            EtcdError error(EtcdErrorType::InvalidParam, "lease id must be positive");
-            m_client->setError(error);
-            return;
-        }
-        body += ",\"lease\":\"" + std::to_string(lease_id.value()) + "\"";
-    }
-    body += "}";
-
-    startPost("/kv/put", std::move(body));
+    startPost("/kv/put", std::move(body.value()));
 }
 
 bool AsyncEtcdClient::PutAwaitable::await_ready() const noexcept
@@ -289,14 +278,10 @@ EtcdVoidResult AsyncEtcdClient::PutAwaitable::await_resume()
         return result;
     }
 
-    if (maybeContainsEtcdErrorFields(m_client->m_last_response_body)) {
-        auto root = parseEtcdSuccessObject(
-            m_client->m_last_response_body,
-            "parse put response");
-        if (!root.has_value()) {
-            m_client->setError(root.error());
-            return std::unexpected(root.error());
-        }
+    auto put_result = parsePutResponse(m_client->m_last_response_body);
+    if (!put_result.has_value()) {
+        m_client->setError(put_result.error());
+        return std::unexpected(put_result.error());
     }
 
     m_client->m_last_bool = true;
@@ -446,28 +431,13 @@ AsyncEtcdClient::GetAwaitable::GetAwaitable(AsyncEtcdClient& client,
     : JsonOpAwaitableBase(client)
 {
     m_client->resetLastOperation();
-    if (key.empty()) {
-        EtcdError error(EtcdErrorType::InvalidParam, "key must not be empty");
-        m_client->setError(error);
-        return;
-    }
-    if (limit.has_value() && limit.value() <= 0) {
-        EtcdError error(EtcdErrorType::InvalidParam, "limit must be positive");
-        m_client->setError(error);
+    auto body = buildGetRequestBody(key, prefix, limit);
+    if (!body.has_value()) {
+        m_client->setError(body.error());
         return;
     }
 
-    std::string body = "{\"key\":\"" + encodeBase64(key) + "\"";
-    if (prefix) {
-        const std::string range_end = makePrefixRangeEnd(key);
-        body += ",\"range_end\":\"" + encodeBase64(range_end) + "\"";
-    }
-    if (limit.has_value()) {
-        body += ",\"limit\":" + std::to_string(limit.value());
-    }
-    body += "}";
-
-    startPost("/kv/range", std::move(body));
+    startPost("/kv/range", std::move(body.value()));
 }
 
 bool AsyncEtcdClient::GetAwaitable::await_ready() const noexcept
@@ -487,16 +457,7 @@ EtcdVoidResult AsyncEtcdClient::GetAwaitable::await_resume()
         return result;
     }
 
-    auto root = parseEtcdSuccessObject(
-        m_client->m_last_response_body,
-        "parse get response");
-    if (!root.has_value()) {
-        m_client->setError(root.error());
-        m_client->m_last_kvs.clear();
-        return std::unexpected(root.error());
-    }
-
-    auto kvs_result = parseKvsFromObject(root.value(), "parse get response");
+    auto kvs_result = parseGetResponseKvs(m_client->m_last_response_body);
     if (!kvs_result.has_value()) {
         m_client->setError(kvs_result.error());
         m_client->m_last_kvs.clear();
@@ -514,20 +475,13 @@ AsyncEtcdClient::DeleteAwaitable::DeleteAwaitable(AsyncEtcdClient& client,
     : JsonOpAwaitableBase(client)
 {
     m_client->resetLastOperation();
-    if (key.empty()) {
-        EtcdError error(EtcdErrorType::InvalidParam, "key must not be empty");
-        m_client->setError(error);
+    auto body = buildDeleteRequestBody(key, prefix);
+    if (!body.has_value()) {
+        m_client->setError(body.error());
         return;
     }
 
-    std::string body = "{\"key\":\"" + encodeBase64(key) + "\"";
-    if (prefix) {
-        const std::string range_end = makePrefixRangeEnd(key);
-        body += ",\"range_end\":\"" + encodeBase64(range_end) + "\"";
-    }
-    body += "}";
-
-    startPost("/kv/deleterange", std::move(body));
+    startPost("/kv/deleterange", std::move(body.value()));
 }
 
 bool AsyncEtcdClient::DeleteAwaitable::await_ready() const noexcept
@@ -547,15 +501,12 @@ EtcdVoidResult AsyncEtcdClient::DeleteAwaitable::await_resume()
         return result;
     }
 
-    auto root = parseEtcdSuccessObject(
-        m_client->m_last_response_body,
-        "parse delete response");
-    if (!root.has_value()) {
-        m_client->setError(root.error());
-        return std::unexpected(root.error());
+    auto deleted_result = parseDeleteResponseDeletedCount(m_client->m_last_response_body);
+    if (!deleted_result.has_value()) {
+        m_client->setError(deleted_result.error());
+        return std::unexpected(deleted_result.error());
     }
-
-    m_client->m_last_deleted_count = findIntField(root.value(), "deleted").value_or(0);
+    m_client->m_last_deleted_count = deleted_result.value();
     m_client->m_last_bool = m_client->m_last_deleted_count > 0;
     return {};
 }
@@ -564,14 +515,13 @@ AsyncEtcdClient::GrantLeaseAwaitable::GrantLeaseAwaitable(AsyncEtcdClient& clien
     : JsonOpAwaitableBase(client)
 {
     m_client->resetLastOperation();
-    if (ttl_seconds <= 0) {
-        EtcdError error(EtcdErrorType::InvalidParam, "ttl must be positive");
-        m_client->setError(error);
+    auto body = buildLeaseGrantRequestBody(ttl_seconds);
+    if (!body.has_value()) {
+        m_client->setError(body.error());
         return;
     }
 
-    const std::string body = "{\"TTL\":" + std::to_string(ttl_seconds) + "}";
-    startPost("/lease/grant", body);
+    startPost("/lease/grant", std::move(body.value()));
 }
 
 bool AsyncEtcdClient::GrantLeaseAwaitable::await_ready() const noexcept
@@ -591,21 +541,12 @@ EtcdVoidResult AsyncEtcdClient::GrantLeaseAwaitable::await_resume()
         return result;
     }
 
-    auto root = parseEtcdSuccessObject(
-        m_client->m_last_response_body,
-        "parse lease grant response");
-    if (!root.has_value()) {
-        m_client->setError(root.error());
-        return std::unexpected(root.error());
+    auto lease_result = parseLeaseGrantResponseId(m_client->m_last_response_body);
+    if (!lease_result.has_value()) {
+        m_client->setError(lease_result.error());
+        return std::unexpected(lease_result.error());
     }
-
-    const auto lease_id = findIntField(root.value(), "ID");
-    if (!lease_id.has_value()) {
-        EtcdError error(EtcdErrorType::Parse, "lease grant response missing ID");
-        m_client->setError(error);
-        return std::unexpected(error);
-    }
-    m_client->m_last_lease_id = lease_id.value();
+    m_client->m_last_lease_id = lease_result.value();
     m_client->m_last_bool = true;
     return {};
 }
@@ -615,19 +556,18 @@ AsyncEtcdClient::KeepAliveAwaitable::KeepAliveAwaitable(AsyncEtcdClient& client,
     , m_lease_id(lease_id)
 {
     m_client->resetLastOperation();
-    if (m_lease_id <= 0) {
-        EtcdError error(EtcdErrorType::InvalidParam, "lease id must be positive");
-        m_client->setError(error);
+    auto body = buildLeaseKeepAliveRequestBody(m_lease_id);
+    if (!body.has_value()) {
+        m_client->setError(body.error());
         return;
     }
 
-    const std::string body = "{\"ID\":\"" + std::to_string(m_lease_id) + "\"}";
     std::optional<std::chrono::milliseconds> timeout = std::nullopt;
     if (!m_client->m_network_config.isRequestTimeoutEnabled()) {
         timeout = std::chrono::seconds(5);
     }
 
-    startPost("/lease/keepalive", body, timeout);
+    startPost("/lease/keepalive", std::move(body.value()), timeout);
 }
 
 bool AsyncEtcdClient::KeepAliveAwaitable::await_ready() const noexcept
@@ -647,37 +587,39 @@ EtcdVoidResult AsyncEtcdClient::KeepAliveAwaitable::await_resume()
         return result;
     }
 
-    auto root = parseEtcdSuccessObject(
-        m_client->m_last_response_body,
-        "parse lease keepalive response");
-    if (!root.has_value()) {
-        m_client->setError(root.error());
-        return std::unexpected(root.error());
+    auto keepalive_result = parseLeaseKeepAliveResponseId(m_client->m_last_response_body, m_lease_id);
+    if (!keepalive_result.has_value()) {
+        m_client->setError(keepalive_result.error());
+        return std::unexpected(keepalive_result.error());
     }
 
-    const auto response_id = findIntField(root.value(), "ID");
-    if (response_id.has_value() && response_id.value() != m_lease_id) {
-        EtcdError error(EtcdErrorType::Parse, "lease keepalive response id mismatch");
-        m_client->setError(error);
-        return std::unexpected(error);
-    }
-
-    m_client->m_last_lease_id = m_lease_id;
+    m_client->m_last_lease_id = keepalive_result.value();
     m_client->m_last_bool = true;
     return {};
 }
 
-AsyncEtcdClient::PipelineAwaitable::PipelineAwaitable(AsyncEtcdClient& client, std::vector<PipelineOp> operations)
+AsyncEtcdClient::PipelineAwaitable::PipelineAwaitable(AsyncEtcdClient& client,
+                                                      std::span<const PipelineOp> operations)
     : JsonOpAwaitableBase(client)
-    , m_operations(std::move(operations))
 {
     m_client->resetLastOperation();
-    auto body = buildTxnBody(m_operations);
+    m_operation_types.reserve(operations.size());
+    for (const auto& op : operations) {
+        m_operation_types.push_back(op.type);
+    }
+
+    auto body = buildTxnBody(operations);
     if (!body.has_value()) {
         m_client->setError(body.error());
         return;
     }
     startPost("/kv/txn", std::move(body.value()));
+}
+
+AsyncEtcdClient::PipelineAwaitable::PipelineAwaitable(AsyncEtcdClient& client,
+                                                      std::vector<PipelineOp> operations)
+    : PipelineAwaitable(client, std::span<const PipelineOp>(operations.data(), operations.size()))
+{
 }
 
 bool AsyncEtcdClient::PipelineAwaitable::await_ready() const noexcept
@@ -697,138 +639,16 @@ EtcdVoidResult AsyncEtcdClient::PipelineAwaitable::await_resume()
         return result;
     }
 
-    auto root = parseEtcdSuccessObject(
+    auto pipeline_results = parsePipelineTxnResponse(
         m_client->m_last_response_body,
-        "parse pipeline txn response");
-    if (!root.has_value()) {
-        m_client->setError(root.error());
+        std::span<const PipelineOpType>(m_operation_types.data(), m_operation_types.size()));
+    if (!pipeline_results.has_value()) {
+        m_client->setError(pipeline_results.error());
         m_client->m_last_pipeline_results.clear();
-        return std::unexpected(root.error());
+        return std::unexpected(pipeline_results.error());
     }
 
-    auto succeeded_field = root.value()["succeeded"];
-    if (!succeeded_field.error()) {
-        auto succeeded_result = succeeded_field.value_unsafe().get_bool();
-        if (!succeeded_result.error() && !succeeded_result.value_unsafe()) {
-            EtcdError error(EtcdErrorType::Server, "pipeline txn returned succeeded=false");
-            m_client->setError(error);
-            m_client->m_last_pipeline_results.clear();
-            return std::unexpected(error);
-        }
-    }
-
-    auto responses_field = root.value()["responses"];
-    if (responses_field.error()) {
-        EtcdError error(EtcdErrorType::Parse, "pipeline txn response missing responses field");
-        m_client->setError(error);
-        m_client->m_last_pipeline_results.clear();
-        return std::unexpected(error);
-    }
-
-    auto responses_array_result = responses_field.value_unsafe().get_array();
-    if (responses_array_result.error()) {
-        EtcdError error = makeJsonParseError("parse pipeline responses as array", responses_array_result.error());
-        m_client->setError(error);
-        m_client->m_last_pipeline_results.clear();
-        return std::unexpected(error);
-    }
-
-    const auto responses = responses_array_result.value_unsafe();
-    if (responses.size() != m_operations.size()) {
-        EtcdError error(
-            EtcdErrorType::Parse,
-            "pipeline responses size mismatch, expected=" + std::to_string(m_operations.size()) +
-                ", actual=" + std::to_string(responses.size()));
-        m_client->setError(error);
-        m_client->m_last_pipeline_results.clear();
-        return std::unexpected(error);
-    }
-
-    m_client->m_last_pipeline_results.clear();
-    m_client->m_last_pipeline_results.reserve(m_operations.size());
-
-    for (size_t i = 0; i < m_operations.size(); ++i) {
-        auto item_object_result = responses.at(i).get_object();
-        if (item_object_result.error()) {
-            EtcdError error = makeJsonParseError("parse pipeline response item as object", item_object_result.error());
-            m_client->setError(error);
-            m_client->m_last_pipeline_results.clear();
-            return std::unexpected(error);
-        }
-
-        const auto item_object = item_object_result.value_unsafe();
-        PipelineItemResult item;
-        item.type = m_operations[i].type;
-
-        switch (m_operations[i].type) {
-        case PipelineOpType::Put: {
-            auto put_field = item_object["response_put"];
-            if (put_field.error()) {
-                EtcdError error(EtcdErrorType::Parse, "pipeline put response missing response_put");
-                m_client->setError(error);
-                m_client->m_last_pipeline_results.clear();
-                return std::unexpected(error);
-            }
-            auto put_object_result = put_field.value_unsafe().get_object();
-            if (put_object_result.error()) {
-                EtcdError error = makeJsonParseError("parse pipeline response_put as object", put_object_result.error());
-                m_client->setError(error);
-                m_client->m_last_pipeline_results.clear();
-                return std::unexpected(error);
-            }
-            item.ok = true;
-            break;
-        }
-        case PipelineOpType::Get: {
-            auto range_field = item_object["response_range"];
-            if (range_field.error()) {
-                EtcdError error(EtcdErrorType::Parse, "pipeline get response missing response_range");
-                m_client->setError(error);
-                m_client->m_last_pipeline_results.clear();
-                return std::unexpected(error);
-            }
-            auto range_object_result = range_field.value_unsafe().get_object();
-            if (range_object_result.error()) {
-                EtcdError error = makeJsonParseError("parse pipeline response_range as object", range_object_result.error());
-                m_client->setError(error);
-                m_client->m_last_pipeline_results.clear();
-                return std::unexpected(error);
-            }
-
-            auto kvs_result = parseKvsFromObject(range_object_result.value_unsafe(), "parse pipeline response_range");
-            if (!kvs_result.has_value()) {
-                m_client->setError(kvs_result.error());
-                m_client->m_last_pipeline_results.clear();
-                return std::unexpected(kvs_result.error());
-            }
-            item.kvs = std::move(kvs_result.value());
-            item.ok = true;
-            break;
-        }
-        case PipelineOpType::Delete: {
-            auto del_field = item_object["response_delete_range"];
-            if (del_field.error()) {
-                EtcdError error(EtcdErrorType::Parse, "pipeline delete response missing response_delete_range");
-                m_client->setError(error);
-                m_client->m_last_pipeline_results.clear();
-                return std::unexpected(error);
-            }
-            auto del_object_result = del_field.value_unsafe().get_object();
-            if (del_object_result.error()) {
-                EtcdError error = makeJsonParseError("parse pipeline response_delete_range as object", del_object_result.error());
-                m_client->setError(error);
-                m_client->m_last_pipeline_results.clear();
-                return std::unexpected(error);
-            }
-            item.deleted_count = findIntField(del_object_result.value_unsafe(), "deleted").value_or(0);
-            item.ok = true;
-            break;
-        }
-        }
-
-        m_client->m_last_pipeline_results.push_back(std::move(item));
-    }
-
+    m_client->m_last_pipeline_results = std::move(pipeline_results.value());
     m_client->m_last_bool = true;
     return {};
 }
@@ -872,9 +692,14 @@ AsyncEtcdClient::KeepAliveAwaitable AsyncEtcdClient::keepAliveOnce(int64_t lease
     return KeepAliveAwaitable(*this, lease_id);
 }
 
+AsyncEtcdClient::PipelineAwaitable AsyncEtcdClient::pipeline(std::span<const PipelineOp> operations)
+{
+    return PipelineAwaitable(*this, operations);
+}
+
 AsyncEtcdClient::PipelineAwaitable AsyncEtcdClient::pipeline(std::vector<PipelineOp> operations)
 {
-    return PipelineAwaitable(*this, std::move(operations));
+    return PipelineAwaitable(*this, std::span<const PipelineOp>(operations.data(), operations.size()));
 }
 
 bool AsyncEtcdClient::connected() const
