@@ -1,181 +1,120 @@
 # galay-etcd
 
-基于 `galay-kernel + galay-http` 的 etcd v3 客户端库，提供异步协程 API 与同步阻塞 API。
+`galay-etcd` 是一个面向 etcd v3 HTTP API 的 C++ 客户端库，提供：
 
-## 功能
+- 同步阻塞客户端：`galay::etcd::EtcdClient`
+- 异步协程客户端：`galay::etcd::AsyncEtcdClient`
+- 共享数据模型：`EtcdConfig`、`AsyncEtcdConfig`、`EtcdKeyValue`、`PipelineOp`
+- CMake 包与可选 C++ module 接口：`galay-etcd::galay-etcd` / `galay.etcd`
 
-- KV：`put / get / delete`
-- Pipeline：`pipeline(txn success ops)`
-- 前缀操作：`prefix get / prefix delete`
-- 租约：`lease grant / keepalive`
-- 异步客户端接口：`AsyncEtcdClient`
-- 同步客户端接口：`EtcdClient`（阻塞 `connect/send/recv/close`）
-- 异步传输层范式：`TcpSocket + HttpSessionAwaitable`（不依赖 `HttpClient` 封装）
-- 错误模型：`std::expected<T, EtcdError>`
+## 文档真相来源
 
-## 目录
+当 Markdown 与源码冲突时，本仓库按以下顺序认定真相：
 
-- `galay-etcd/`：库源码
-- `test/`：功能验证程序
-- `benchmark/`：压测程序
-- `examples/`：使用示例（sync/async）
-- `docs/`：文档
+1. 公开头文件与导出 target
+2. 实现行为
+3. `examples/`
+4. `test/`
+5. `benchmark/`
+6. Markdown 文档
 
-## 构建
+## 当前支持范围
 
-### 依赖
+- KV：`put` / `get` / `del`
+- 前缀操作：`get(key, true)` / `del(key, true)`
+- 租约：`grantLease(ttl_seconds)` / `keepAliveOnce(lease_id)`
+- Pipeline：单次 `POST /v3/kv/txn`，请求体固定为 `compare=[]`、`success=[ops]`、`failure=[]`
+- 最近一次结果访问器：`lastKeyValues()`、`lastLeaseId()`、`lastDeletedCount()`、`lastPipelineResults()`
 
-- Galay 内部依赖（构建必需 + 联调推荐）：
-  - `galay-kernel`（构建必需）
-  - `galay-utils`（推荐）
-  - `galay-http`（推荐）
-- 第三方依赖：
-  - C++23 编译器
-  - CMake 3.20+
-  - `simdjson`（本项目通过 `pkg-config simdjson` 查找）
-  - `spdlog`
+## 当前未实现或不建议误读的能力
 
-### 依赖安装（macOS / Homebrew）
+- `https://` endpoint 语法可被解析，但同步/异步客户端都会拒绝 TLS 连接
+- 认证、Watch、官方 Lock API、Cluster / Member 管理接口当前都没有公开 API
+- Pipeline 不是 compare/failure 事务 DSL；当前只暴露“空 compare + success ops”批量请求
+- `config.keepalive` 是传输层 keep-alive，不等于租约续约；租约续约必须显式调用 `keepAliveOnce()`
+- 客户端实例未声明为线程安全；并发场景请使用“每线程 / 每协程一个客户端”或外部串行化
 
-```bash
-brew install cmake spdlog simdjson pkg-config
-```
+## 构建前提
 
-### 依赖安装（Ubuntu / Debian）
+| 项目 | 当前要求 | 来源 |
+| --- | --- | --- |
+| C++ 标准 | C++23 | `cmake/option.cmake` |
+| CMake | `>= 3.20` | `CMakeLists.txt` |
+| 内部依赖 | `galay-kernel`、`galay-utils`、`GalayHttp` | `galay-etcd/CMakeLists.txt` |
+| 第三方依赖 | `spdlog`、`simdjson`（通过 `pkg-config simdjson`） | `galay-etcd/CMakeLists.txt` |
+| 默认构建项 | tests / benchmarks / examples 默认开启 | `cmake/option.cmake` |
+| module/import 编译 | 仅在受支持工具链下启用 | `cmake/option.cmake` |
 
-```bash
-sudo apt-get update
-sudo apt-get install -y cmake g++ libspdlog-dev libsimdjson-dev pkg-config
-```
+module/import 编译路径的额外条件：
 
-### 拉取源码（统一联调推荐）
+- `CMake >= 3.28`
+- 生成器为 `Ninja` 或 `Visual Studio`
+- `Linux + GCC >= 14`，或非 `AppleClang` 且可找到 `clang-scan-deps`
 
-```bash
-git clone https://github.com/gzj-creator/galay-kernel.git
-git clone https://github.com/gzj-creator/galay-utils.git
-git clone https://github.com/gzj-creator/galay-http.git
-git clone https://github.com/gzj-creator/galay-etcd.git
-```
+## 快速构建
 
-仅单独构建 `galay-etcd` 时，最小内部依赖为 `galay-kernel` 和 `galay-http`。
+以下命令会构建库、示例、测试与 benchmark：
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
+cmake -S . -B build \
+  -D GALAY_ETCD_BUILD_EXAMPLES=ON \
+  -D GALAY_ETCD_BUILD_TESTS=ON \
+  -D GALAY_ETCD_BUILD_BENCHMARKS=ON
+
+cmake --build build -j
 ```
 
-常用选项：
-
-- `-DGALAY_ETCD_BUILD_TESTS=ON/OFF`
-- `-DGALAY_ETCD_BUILD_BENCHMARKS=ON/OFF`
-- `-DGALAY_ETCD_BUILD_EXAMPLES=ON/OFF`
-- `-DGALAY_ETCD_BUILD_SHARED_LIBS=ON/OFF`
-- `-DGALAY_ETCD_ENABLE_IMPORT_COMPILATION=ON/OFF`
-
-## 功能测试
-
-远端 etcd 示例地址（可覆盖）：`http://140.143.142.251:2379`
+本地 etcd 联通检查建议在运行示例前执行：
 
 ```bash
-# 脚本化 smoke（curl 端到端）
-./scripts/manual_smoke.sh
-
-# 使用库执行 smoke
-./build/test/T1-EtcdSmoke http://140.143.142.251:2379
-
-# 前缀能力测试
-./build/test/T2-EtcdPrefixOps http://140.143.142.251:2379
-
-# pipeline 能力测试
-./build/test/T3-EtcdPipeline http://140.143.142.251:2379
-
-# async smoke
-./build/test/T4-AsyncEtcdSmoke http://140.143.142.251:2379
-
-# async pipeline
-./build/test/T5-AsyncEtcdPipeline http://140.143.142.251:2379
+curl http://127.0.0.1:2379/version
 ```
 
-## 示例程序
+## 运行入口
+
+本仓库所有公开示例 / 测试 / benchmark 都通过命令行参数接收 endpoint；不要求环境变量。
 
 ```bash
-# sync 基础示例
-./build/examples/E1-SyncBasic http://140.143.142.251:2379
+# examples/
+./build/examples/E1-SyncBasic http://127.0.0.1:2379
+./build/examples/E2-AsyncBasic http://127.0.0.1:2379
 
-# async 基础示例
-./build/examples/E2-AsyncBasic http://140.143.142.251:2379
+# test/
+./build/test/T1-EtcdSmoke http://127.0.0.1:2379
+./build/test/T2-EtcdPrefixOps http://127.0.0.1:2379
+./build/test/T3-EtcdPipeline http://127.0.0.1:2379
+./build/test/T4-AsyncEtcdSmoke http://127.0.0.1:2379
+./build/test/T5-AsyncEtcdPipeline http://127.0.0.1:2379
+./build/test/T6-EtcdInternalHelpers
+
+# benchmark/
+./build/benchmark/B1-EtcdKvBenchmark http://127.0.0.1:2379 8 500 64 put
+./build/benchmark/B1-EtcdKvBenchmark http://127.0.0.1:2379 8 500 64 mixed
 ```
 
-## 压测
+说明：
 
-```bash
-# 参数：
-# 1 endpoint, 2 threads, 3 ops_per_thread, 4 value_size, 5 mode(put|mixed)
-./build/benchmark/B1-EtcdKvBenchmark http://140.143.142.251:2379 8 500 64 put
-./build/benchmark/B1-EtcdKvBenchmark http://140.143.142.251:2379 8 300 128 mixed
-```
+- `T6-EtcdInternalHelpers` 是纯本地校验，不依赖 etcd 服务
+- 公开 `examples/` / `test/` / `benchmark` 在省略 `argv[1]` 时会回落到 `http://127.0.0.1:2379`；企业环境请始终显式传入自己的 endpoint
+- benchmark 结果页只接受“附命令、环境和日期”的数据；旧数字若未复算，一律按历史样本处理
 
-输出包含：
+## 文档导航
 
-- 总请求数、成功/失败数
-- 总耗时、吞吐（ops/s）
-- 延迟 `p50/p95/p99/max`（微秒）
+- [文档索引](docs/README.md)
+- [00-快速开始](docs/00-快速开始.md)
+- [01-架构设计](docs/01-架构设计.md)
+- [02-API参考](docs/02-API参考.md)
+- [03-使用指南](docs/03-使用指南.md)
+- [04-示例代码](docs/04-示例代码.md)
+- [05-性能测试](docs/05-性能测试.md)
+- [06-高级主题](docs/06-高级主题.md)
+- [07-常见问题](docs/07-常见问题.md)
 
-## 验收记录（2026-02-16）
+## 选择入口
 
-真实环境：`http://140.143.142.251:2379`
-
-```bash
-./build/test/T1-EtcdSmoke http://140.143.142.251:2379
-./build/test/T2-EtcdPrefixOps http://140.143.142.251:2379
-./build/benchmark/B1-EtcdKvBenchmark http://140.143.142.251:2379 8 200 64 put
-./build/benchmark/B1-EtcdKvBenchmark http://140.143.142.251:2379 8 100 64 mixed
-```
-
-结果摘要：
-
-- `T1-EtcdSmoke`：通过（put/get/delete + lease 生命周期通过）
-- `T2-EtcdPrefixOps`：通过（prefix range/delete 通过）
-- `put` 压测：
-  - 优化前样本：`83.91 ops/s`，`p95=117344us`
-  - 优化后样本：`85.61 ops/s`，`p95=115872us`
-- `mixed` 压测：
-  - 优化前样本：`43.95 ops/s`，`p95=200679us`
-  - 优化后样本：`41.80 ~ 42.50 ops/s`，`p95=214396 ~ 218517us`（远端环境抖动较大）
-- 去除 `promise/future` 阻塞桥接后（协程 worker）：
-  - `put`: `211.276 ops/s`，`p95=38662us`
-  - `mixed`: `115.01 ops/s`，`p95=72786us`
-- 进一步优化（复用 `HttpSession` + `put` 快路径跳过无效 JSON parse）后：
-  - `put`: `228.228 ~ 241.038 ops/s`，`p95=35408 ~ 34158us`
-  - `mixed`: `111.685 ~ 113.746 ops/s`，`p95=72775 ~ 70858us`
-- 传输层重构（去 `HttpClient`，改 `TcpSocket + HttpSessionAwaitable`）后：
-  - 功能测试：`T1/T2` 均通过
-  - `put`（8 workers）：`227.587 ~ 228.914 ops/s`，`p95=36111 ~ 35834us`
-  - `mixed`（8 workers）：`116.151 ops/s`，`p95=68661us`
-  - `put`（32 workers）：`608.457 ops/s`，`p95=39222us`
-
-## 最新验证（2026-02-24）
-
-本次改动：`EtcdClient` 从协程等待体封装调整为同步阻塞接口（不返回 Awaitable）。
-
-```bash
-./build/test/T1-EtcdSmoke http://140.143.142.251:2379
-./build/test/T2-EtcdPrefixOps http://140.143.142.251:2379
-./build/test/T3-EtcdPipeline http://140.143.142.251:2379
-```
-
-结果摘要：
-
-- `T1-EtcdSmoke`：通过（put/get/delete + lease 生命周期通过）
-- `T2-EtcdPrefixOps`：通过（prefix range/delete 通过）
-- `T3-EtcdPipeline`：通过（pipeline txn 解析与行为通过）
-
-## 文档
-
-- [快速开始](docs/01-快速开始.md)
-- [API 参考](docs/02-API参考.md)
-- [测试与压测](docs/03-测试与压测.md)
-- [架构设计](docs/04-架构设计.md)
-- [示例代码](docs/05-示例代码.md)
-- [高级主题](docs/06-高级主题.md)
-- [常见问题](docs/07-常见问题.md)
+- 想先跑起来：看 `docs/00-快速开始.md`
+- 想对 API 对账：看 `docs/02-API参考.md`
+- 想查 `EtcdLog` / `EtcdLoggerPtr` / `galay::etcd::internal` / `parseEndpoint()` / `import galay.etcd` 边界：看 `docs/02-API参考.md`
+- 想找可运行文件与 target：看 `docs/04-示例代码.md`
+- 想看 benchmark 真正怎么跑：看 `docs/05-性能测试.md`
+- 想确认已知限制和生产边界：看 `docs/06-高级主题.md`
