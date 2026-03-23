@@ -36,3 +36,13 @@ galay_etcd_apply_cxx(T6-EtcdInternalHelpers)
 add_test(NAME T6-EtcdInternalHelpers COMMAND $<TARGET_FILE:T6-EtcdInternalHelpers>)
 
 galay_etcd_add_test_target(T7-EtcdAwaitableSurface T7-etcd_awaitable_surface.cc)
+
+add_executable(T8-AsyncBenchmarkSmoke
+    T8-async_benchmark_smoke.cc
+    ../benchmark/AsyncBenchmarkSupport.cc
+)
+target_link_libraries(T8-AsyncBenchmarkSmoke PRIVATE galay-etcd)
+set_property(TARGET T8-AsyncBenchmarkSmoke PROPERTY NO_SYSTEM_FROM_IMPORTED ON)
+galay_etcd_apply_local_dep_includes(T8-AsyncBenchmarkSmoke)
+galay_etcd_apply_cxx(T8-AsyncBenchmarkSmoke)
+add_test(NAME T8-AsyncBenchmarkSmoke COMMAND $<TARGET_FILE:T8-AsyncBenchmarkSmoke>)
