@@ -27,7 +27,7 @@ int fail(const std::string& message)
 
 int main(int argc, char** argv)
 {
-    const std::string endpoint = argc > 1 ? argv[1] : "http://140.143.142.251:2379";
+    const std::string endpoint = argc > 1 ? argv[1] : "http://127.0.0.1:2379";
 
     EtcdConfig config;
     config.endpoint = endpoint;

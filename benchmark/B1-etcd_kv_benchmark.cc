@@ -17,7 +17,7 @@ namespace
 
 struct Args
 {
-    std::string endpoint = "http://140.143.142.251:2379";
+    std::string endpoint = "http://127.0.0.1:2379";
     int threads = 8;
     int ops_per_thread = 500;
     int value_size = 64;

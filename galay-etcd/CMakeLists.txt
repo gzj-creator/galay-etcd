@@ -24,6 +24,7 @@ file(GLOB SOURCES
 )
 
 add_library(${PROJECT_NAME} ${GALAY_ETCD_LIBRARY_TYPE} ${SOURCES})
+set_property(TARGET ${PROJECT_NAME} PROPERTY NO_SYSTEM_FROM_IMPORTED ON)
 
 target_link_libraries(${PROJECT_NAME}
     PUBLIC galay-kernel::galay-kernel
@@ -39,6 +40,13 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
     PUBLIC $<INSTALL_INTERFACE:include>
 )
+
+if(GALAY_ETCD_LOCAL_DEP_INCLUDE_DIRS)
+    target_include_directories(${PROJECT_NAME} BEFORE PRIVATE ${GALAY_ETCD_LOCAL_DEP_INCLUDE_DIRS})
+    foreach(_galay_etcd_local_dep_include IN LISTS GALAY_ETCD_LOCAL_DEP_INCLUDE_DIRS)
+        target_compile_options(${PROJECT_NAME} BEFORE PRIVATE "-I${_galay_etcd_local_dep_include}")
+    endforeach()
+endif()
 
 galay_etcd_apply_cxx(${PROJECT_NAME})
 
@@ -108,7 +116,7 @@ configure_package_config_file(
 
 write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfigVersion.cmake"
-    VERSION 1.0.0
+    VERSION ${PROJECT_VERSION}
     COMPATIBILITY AnyNewerVersion
 )
 

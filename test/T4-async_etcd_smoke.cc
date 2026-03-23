@@ -10,10 +10,10 @@
 
 using galay::etcd::AsyncEtcdClient;
 using galay::etcd::AsyncEtcdConfig;
-using galay::kernel::Coroutine;
 using galay::kernel::IOScheduler;
 using galay::kernel::Runtime;
 using galay::kernel::RuntimeBuilder;
+using galay::kernel::Task;
 
 namespace
 {
@@ -30,10 +30,10 @@ int fail(const std::string& message)
     return 1;
 }
 
-Coroutine runSmoke(IOScheduler* scheduler,
-                   std::string endpoint,
-                   std::atomic<bool>* done,
-                   int* exit_code)
+Task<void> runSmoke(IOScheduler* scheduler,
+                    std::string endpoint,
+                    std::atomic<bool>* done,
+                    int* exit_code)
 {
     auto finish = [&](int code) {
         *exit_code = code;
@@ -134,9 +134,9 @@ Coroutine runSmoke(IOScheduler* scheduler,
 
 int main(int argc, char** argv)
 {
-    const std::string endpoint = argc > 1 ? argv[1] : "http://140.143.142.251:2379";
+    const std::string endpoint = argc > 1 ? argv[1] : "http://127.0.0.1:2379";
 
-    Runtime runtime = RuntimeBuilder().ioSchedulerCount(1).computeSchedulerCount(1).build();
+    Runtime runtime = RuntimeBuilder().ioSchedulerCount(1).computeSchedulerCount(0).build();
     runtime.start();
 
     auto* scheduler = runtime.getNextIOScheduler();
@@ -147,7 +147,10 @@ int main(int argc, char** argv)
 
     std::atomic<bool> done{false};
     int exit_code = 1;
-    scheduler->spawn(runSmoke(scheduler, endpoint, &done, &exit_code));
+    if (!galay::kernel::scheduleTask(scheduler, runSmoke(scheduler, endpoint, &done, &exit_code))) {
+        runtime.stop();
+        return fail("failed to schedule async smoke task");
+    }
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(120);
     while (!done.load(std::memory_order_acquire) &&

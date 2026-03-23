@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <coroutine>
 #include <expected>
+#include <map>
 #include <memory>
 #include <optional>
 #include <span>
@@ -38,9 +39,16 @@ public:
     using PipelineOp = galay::etcd::PipelineOp;
     using PipelineItemResult = galay::etcd::PipelineItemResult;
 
+private:
     using ConnectIoAwaitable =
         decltype(std::declval<galay::async::TcpSocket&>().connect(std::declval<const galay::kernel::Host&>()));
     using CloseIoAwaitable = decltype(std::declval<galay::async::TcpSocket&>().close());
+    using HttpPostAwaitable =
+        decltype(std::declval<galay::http::HttpSession&>().post(
+            std::declval<const std::string&>(),
+            std::declval<const std::string&>(),
+            std::declval<const std::string&>(),
+            std::declval<const std::map<std::string, std::string>&>()));
 
     template <typename AwaitableType>
     class IoAwaitableBase
@@ -61,7 +69,8 @@ public:
             return !m_awaitable.has_value();
         }
 
-        bool awaitSuspend(std::coroutine_handle<> handle)
+        template <typename Promise>
+        bool awaitSuspend(std::coroutine_handle<Promise> handle)
         {
             return m_awaitable->await_suspend(handle);
         }
@@ -82,9 +91,12 @@ public:
         std::optional<AwaitableType> m_awaitable;
     };
 
-    class ConnectAwaitable : private IoAwaitableBase<ConnectIoAwaitable>
+public:
+    class ConnectAwaitable
     {
     public:
+        using Result = EtcdVoidResult;
+
         ConnectAwaitable(AsyncEtcdClient& client);
 
         ConnectAwaitable(const ConnectAwaitable&) = delete;
@@ -92,9 +104,49 @@ public:
         ConnectAwaitable(ConnectAwaitable&&) noexcept = default;
         ConnectAwaitable& operator=(ConnectAwaitable&&) noexcept = default;
 
-        bool await_ready() const noexcept;
-        bool await_suspend(std::coroutine_handle<> handle);
-        EtcdVoidResult await_resume();
+        bool await_ready() noexcept;
+        template <typename Promise>
+        bool await_suspend(std::coroutine_handle<Promise> handle)
+        {
+            return m_inner->await_suspend(handle);
+        }
+        Result await_resume();
+
+    private:
+        enum class Phase {
+            Connect,
+            Done
+        };
+
+        struct SharedState {
+            explicit SharedState(AsyncEtcdClient& client);
+
+            AsyncEtcdClient* client = nullptr;
+            Phase phase = Phase::Done;
+            galay::kernel::Host host;
+            std::optional<Result> result;
+        };
+
+        struct Machine {
+            using result_type = Result;
+            static constexpr galay::kernel::SequenceOwnerDomain kSequenceOwnerDomain =
+                galay::kernel::SequenceOwnerDomain::Write;
+
+            explicit Machine(std::shared_ptr<SharedState> state);
+
+            galay::kernel::MachineAction<result_type> advance();
+            void onConnect(std::expected<void, galay::kernel::IOError> result);
+            void onRead(std::expected<size_t, galay::kernel::IOError>);
+            void onWrite(std::expected<size_t, galay::kernel::IOError>);
+
+        private:
+            std::shared_ptr<SharedState> m_state;
+        };
+
+        using InnerAwaitable = galay::kernel::StateMachineAwaitable<Machine>;
+
+        std::shared_ptr<SharedState> m_state;
+        std::unique_ptr<InnerAwaitable> m_inner;
     };
 
     class CloseAwaitable : private IoAwaitableBase<CloseIoAwaitable>
@@ -108,7 +160,11 @@ public:
         CloseAwaitable& operator=(CloseAwaitable&&) noexcept = default;
 
         bool await_ready() const noexcept;
-        bool await_suspend(std::coroutine_handle<> handle);
+        template <typename Promise>
+        bool await_suspend(std::coroutine_handle<Promise> handle)
+        {
+            return awaitSuspend(handle);
+        }
         EtcdVoidResult await_resume();
     };
 
@@ -127,14 +183,27 @@ public:
         ~PostJsonAwaitable();
 
         bool await_ready() const noexcept;
-        bool await_suspend(std::coroutine_handle<> handle);
+        template <typename Promise>
+        bool await_suspend(std::coroutine_handle<Promise> handle)
+        {
+            return m_ctx->awaitable.await_suspend(handle);
+        }
         EtcdVoidResult await_resume();
 
     private:
-        struct Context;
+        struct Context
+        {
+            AsyncEtcdClient* owner = nullptr;
+            HttpPostAwaitable awaitable;
+
+            Context(AsyncEtcdClient& client,
+                    std::string api_path,
+                    std::string body);
+        };
         std::unique_ptr<Context> m_ctx;
     };
 
+private:
     class JsonOpAwaitableBase
     {
     protected:
@@ -144,13 +213,18 @@ public:
                        std::string body,
                        std::optional<std::chrono::milliseconds> force_timeout = std::nullopt);
         bool awaitReady() const noexcept;
-        bool awaitSuspend(std::coroutine_handle<> handle);
+        template <typename Promise>
+        bool awaitSuspend(std::coroutine_handle<Promise> handle)
+        {
+            return m_post_awaitable->await_suspend(handle);
+        }
         EtcdVoidResult resumePost();
 
         AsyncEtcdClient* m_client = nullptr;
         std::optional<PostJsonAwaitable> m_post_awaitable;
     };
 
+public:
     class PutAwaitable : private JsonOpAwaitableBase
     {
     public:
@@ -165,7 +239,11 @@ public:
         PutAwaitable& operator=(PutAwaitable&&) noexcept = default;
 
         bool await_ready() const noexcept;
-        bool await_suspend(std::coroutine_handle<> handle);
+        template <typename Promise>
+        bool await_suspend(std::coroutine_handle<Promise> handle)
+        {
+            return awaitSuspend(handle);
+        }
         EtcdVoidResult await_resume();
     };
 
@@ -183,7 +261,11 @@ public:
         GetAwaitable& operator=(GetAwaitable&&) noexcept = default;
 
         bool await_ready() const noexcept;
-        bool await_suspend(std::coroutine_handle<> handle);
+        template <typename Promise>
+        bool await_suspend(std::coroutine_handle<Promise> handle)
+        {
+            return awaitSuspend(handle);
+        }
         EtcdVoidResult await_resume();
     };
 
@@ -200,7 +282,11 @@ public:
         DeleteAwaitable& operator=(DeleteAwaitable&&) noexcept = default;
 
         bool await_ready() const noexcept;
-        bool await_suspend(std::coroutine_handle<> handle);
+        template <typename Promise>
+        bool await_suspend(std::coroutine_handle<Promise> handle)
+        {
+            return awaitSuspend(handle);
+        }
         EtcdVoidResult await_resume();
     };
 
@@ -215,7 +301,11 @@ public:
         GrantLeaseAwaitable& operator=(GrantLeaseAwaitable&&) noexcept = default;
 
         bool await_ready() const noexcept;
-        bool await_suspend(std::coroutine_handle<> handle);
+        template <typename Promise>
+        bool await_suspend(std::coroutine_handle<Promise> handle)
+        {
+            return awaitSuspend(handle);
+        }
         EtcdVoidResult await_resume();
     };
 
@@ -230,7 +320,11 @@ public:
         KeepAliveAwaitable& operator=(KeepAliveAwaitable&&) noexcept = default;
 
         bool await_ready() const noexcept;
-        bool await_suspend(std::coroutine_handle<> handle);
+        template <typename Promise>
+        bool await_suspend(std::coroutine_handle<Promise> handle)
+        {
+            return awaitSuspend(handle);
+        }
         EtcdVoidResult await_resume();
 
     private:
@@ -249,7 +343,11 @@ public:
         PipelineAwaitable& operator=(PipelineAwaitable&&) noexcept = default;
 
         bool await_ready() const noexcept;
-        bool await_suspend(std::coroutine_handle<> handle);
+        template <typename Promise>
+        bool await_suspend(std::coroutine_handle<Promise> handle)
+        {
+            return awaitSuspend(handle);
+        }
         EtcdVoidResult await_resume();
 
     private:

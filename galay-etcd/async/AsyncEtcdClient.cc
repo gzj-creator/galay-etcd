@@ -5,7 +5,6 @@
 #include <galay-http/protoc/http/HttpError.h>
 
 #include <exception>
-#include <string_view>
 #include <utility>
 
 namespace galay::etcd
@@ -15,34 +14,6 @@ using namespace internal;
 
 namespace
 {
-
-galay::http::HttpRequest buildJsonPostRequest(
-    std::string uri,
-    std::string body,
-    const std::string& host_header,
-    bool keepalive)
-{
-    galay::http::HttpRequest request;
-    galay::http::HttpRequestHeader header;
-
-    header.method() = galay::http::HttpMethod::POST;
-    header.uri() = std::move(uri);
-    header.version() = galay::http::HttpVersion::HttpVersion_1_1;
-    header.headerPairs().addHeaderPair("Host", host_header);
-    header.headerPairs().addHeaderPair("Accept", "application/json");
-    header.headerPairs().addHeaderPair("Connection", keepalive ? "keep-alive" : "close");
-
-    if (!body.empty()) {
-        header.headerPairs().addHeaderPair("Content-Type", "application/json");
-        header.headerPairs().addHeaderPair("Content-Length", std::to_string(body.size()));
-    }
-
-    request.setHeader(std::move(header));
-    if (!body.empty()) {
-        request.setBodyStr(std::move(body));
-    }
-    return request;
-}
 
 EtcdError mapHttpError(const galay::http::HttpError& error)
 {
@@ -104,6 +75,12 @@ EtcdError mapKernelIoError(const galay::kernel::IOError& error,
     return EtcdError(fallback, error.message());
 }
 
+galay::kernel::IOController& invalidController()
+{
+    static galay::kernel::IOController controller(GHandle::invalid());
+    return controller;
+}
+
 } // namespace
 
 AsyncEtcdClient::AsyncEtcdClient(galay::kernel::IOScheduler* scheduler,
@@ -130,25 +107,24 @@ AsyncEtcdClient::AsyncEtcdClient(galay::kernel::IOScheduler* scheduler,
     m_endpoint_valid = true;
 }
 
-struct AsyncEtcdClient::PostJsonAwaitable::Context
+AsyncEtcdClient::PostJsonAwaitable::Context::Context(AsyncEtcdClient& client,
+                                                     std::string api_path,
+                                                     std::string body)
+    : owner(&client)
+    , awaitable([&client, api_path = std::move(api_path), body = std::move(body)]() mutable {
+        std::map<std::string, std::string> headers{
+            {"Host", client.m_host_header},
+            {"Accept", "application/json"},
+            {"Connection", client.m_network_config.keepalive ? "keep-alive" : "close"},
+        };
+        return client.m_http_session->post(
+            client.m_api_prefix + api_path,
+            body,
+            "application/json",
+            headers);
+    }())
 {
-    using HttpAwaitable = galay::http::HttpSessionAwaitable;
-
-    AsyncEtcdClient* owner = nullptr;
-    HttpAwaitable awaitable;
-
-    Context(AsyncEtcdClient& client,
-            std::string api_path,
-            std::string body)
-        : owner(&client)
-        , awaitable(*client.m_http_session, buildJsonPostRequest(
-                                 client.m_api_prefix + api_path,
-                                 std::move(body),
-                                 client.m_host_header,
-                                 client.m_network_config.keepalive))
-    {
-    }
-};
+}
 
 AsyncEtcdClient::PostJsonAwaitable::PostJsonAwaitable(AsyncEtcdClient& client,
                                                  std::string api_path,
@@ -175,11 +151,6 @@ AsyncEtcdClient::PostJsonAwaitable::~PostJsonAwaitable() = default;
 bool AsyncEtcdClient::PostJsonAwaitable::await_ready() const noexcept
 {
     return m_ctx == nullptr;
-}
-
-bool AsyncEtcdClient::PostJsonAwaitable::await_suspend(std::coroutine_handle<> handle)
-{
-    return m_ctx->awaitable.await_suspend(handle);
 }
 
 EtcdVoidResult AsyncEtcdClient::PostJsonAwaitable::await_resume()
@@ -235,11 +206,6 @@ bool AsyncEtcdClient::JsonOpAwaitableBase::awaitReady() const noexcept
     return !m_post_awaitable.has_value() || m_post_awaitable->await_ready();
 }
 
-bool AsyncEtcdClient::JsonOpAwaitableBase::awaitSuspend(std::coroutine_handle<> handle)
-{
-    return m_post_awaitable->await_suspend(handle);
-}
-
 EtcdVoidResult AsyncEtcdClient::JsonOpAwaitableBase::resumePost()
 {
     return m_client->resumePostOrCurrent(m_post_awaitable);
@@ -266,11 +232,6 @@ bool AsyncEtcdClient::PutAwaitable::await_ready() const noexcept
     return awaitReady();
 }
 
-bool AsyncEtcdClient::PutAwaitable::await_suspend(std::coroutine_handle<> handle)
-{
-    return awaitSuspend(handle);
-}
-
 EtcdVoidResult AsyncEtcdClient::PutAwaitable::await_resume()
 {
     auto result = resumePost();
@@ -288,89 +249,139 @@ EtcdVoidResult AsyncEtcdClient::PutAwaitable::await_resume()
     return {};
 }
 
-AsyncEtcdClient::ConnectAwaitable::ConnectAwaitable(AsyncEtcdClient& client)
-    : IoAwaitableBase(client)
+AsyncEtcdClient::ConnectAwaitable::SharedState::SharedState(AsyncEtcdClient& owner)
+    : client(&owner)
 {
-    m_client->resetLastOperation();
-    if (m_client->m_scheduler == nullptr) {
+    client->resetLastOperation();
+    if (client->m_scheduler == nullptr) {
         EtcdError error(EtcdErrorType::Internal, "IOScheduler is null");
-        m_client->setError(error);
+        client->setError(error);
+        result = std::unexpected(error);
         return;
     }
 
-    if (m_client->m_connected && m_client->m_socket != nullptr && m_client->m_http_session != nullptr) {
+    if (client->m_connected && client->m_socket != nullptr && client->m_http_session != nullptr) {
+        result = Result{};
         return;
     }
 
-    if (!m_client->m_endpoint_valid || !m_client->m_server_host.has_value()) {
-        const std::string message = m_client->m_endpoint_error.empty()
+    if (!client->m_endpoint_valid || !client->m_server_host.has_value()) {
+        const std::string message = client->m_endpoint_error.empty()
             ? "invalid endpoint"
-            : m_client->m_endpoint_error;
-        m_client->setError(EtcdErrorType::InvalidEndpoint, message);
+            : client->m_endpoint_error;
+        EtcdError error(EtcdErrorType::InvalidEndpoint, message);
+        client->setError(error);
+        result = std::unexpected(error);
         return;
     }
 
     try {
-        m_client->m_socket = std::make_unique<galay::async::TcpSocket>(m_client->m_ip_type);
-        auto nonblock_result = m_client->m_socket->option().handleNonBlock();
+        client->m_socket = std::make_unique<galay::async::TcpSocket>(client->m_ip_type);
+        auto nonblock_result = client->m_socket->option().handleNonBlock();
         if (!nonblock_result.has_value()) {
             EtcdError error = mapKernelIoError(nonblock_result.error(), EtcdErrorType::Connection);
-            m_client->setError(error);
-            m_client->m_socket.reset();
-            m_client->m_connected = false;
+            client->setError(error);
+            client->m_socket.reset();
+            client->m_connected = false;
+            result = std::unexpected(error);
             return;
         }
-        startIo(m_client->m_socket->connect(m_client->m_server_host.value()));
+
+        host = client->m_server_host.value();
+        phase = Phase::Connect;
     } catch (const std::exception& ex) {
         EtcdError error(EtcdErrorType::Connection, ex.what());
-        m_client->setError(error);
-        m_client->m_http_session.reset();
-        m_client->m_socket.reset();
-        m_client->m_connected = false;
+        client->setError(error);
+        client->m_http_session.reset();
+        client->m_socket.reset();
+        client->m_connected = false;
+        result = std::unexpected(error);
     }
 }
 
-bool AsyncEtcdClient::ConnectAwaitable::await_ready() const noexcept
+AsyncEtcdClient::ConnectAwaitable::Machine::Machine(std::shared_ptr<SharedState> state)
+    : m_state(std::move(state))
 {
-    return awaitReady();
 }
 
-bool AsyncEtcdClient::ConnectAwaitable::await_suspend(std::coroutine_handle<> handle)
+galay::kernel::MachineAction<AsyncEtcdClient::ConnectAwaitable::Result>
+AsyncEtcdClient::ConnectAwaitable::Machine::advance()
 {
-    return awaitSuspend(handle);
+    if (m_state->result.has_value()) {
+        return galay::kernel::MachineAction<result_type>::complete(std::move(*m_state->result));
+    }
+
+    if (m_state->phase == Phase::Connect) {
+        return galay::kernel::MachineAction<result_type>::waitConnect(m_state->host);
+    }
+
+    m_state->result = m_state->client->currentResult();
+    return galay::kernel::MachineAction<result_type>::complete(std::move(*m_state->result));
+}
+
+void AsyncEtcdClient::ConnectAwaitable::Machine::onConnect(
+    std::expected<void, galay::kernel::IOError> result)
+{
+    if (!result.has_value()) {
+        EtcdError error = mapKernelIoError(result.error());
+        m_state->client->setError(error);
+        m_state->client->m_http_session.reset();
+        m_state->client->m_socket.reset();
+        m_state->client->m_connected = false;
+        m_state->result = std::unexpected(error);
+        m_state->phase = Phase::Done;
+        return;
+    }
+
+    try {
+        m_state->client->m_http_session = std::make_unique<galay::http::HttpSession>(
+            *m_state->client->m_socket,
+            m_state->client->m_network_config.buffer_size);
+        m_state->client->m_connected = true;
+        m_state->result = Result{};
+    } catch (const std::exception& ex) {
+        EtcdError error(EtcdErrorType::Internal,
+                        std::string("create http session failed: ") + ex.what());
+        m_state->client->setError(error);
+        m_state->client->m_http_session.reset();
+        m_state->client->m_socket.reset();
+        m_state->client->m_connected = false;
+        m_state->result = std::unexpected(error);
+    }
+
+    m_state->phase = Phase::Done;
+}
+
+void AsyncEtcdClient::ConnectAwaitable::Machine::onRead(
+    std::expected<size_t, galay::kernel::IOError>)
+{
+}
+
+void AsyncEtcdClient::ConnectAwaitable::Machine::onWrite(
+    std::expected<size_t, galay::kernel::IOError>)
+{
+}
+
+AsyncEtcdClient::ConnectAwaitable::ConnectAwaitable(AsyncEtcdClient& client)
+    : m_state(std::make_shared<SharedState>(client))
+{
+    auto* controller =
+        client.m_socket != nullptr ? client.m_socket->controller() : &invalidController();
+    m_inner = std::make_unique<InnerAwaitable>(
+        galay::kernel::AwaitableBuilder<Result>::fromStateMachine(
+            controller,
+            Machine(m_state))
+            .build());
+}
+
+bool AsyncEtcdClient::ConnectAwaitable::await_ready() noexcept
+{
+    return m_inner->await_ready();
 }
 
 EtcdVoidResult AsyncEtcdClient::ConnectAwaitable::await_resume()
 {
-    auto& io_awaitable = awaitable();
-    if (!io_awaitable.has_value()) {
-        return m_client->currentResult();
-    }
-
-    auto connect_result = io_awaitable->await_resume();
-    if (!connect_result.has_value()) {
-        EtcdError error = mapKernelIoError(connect_result.error());
-        m_client->setError(error);
-        m_client->m_http_session.reset();
-        m_client->m_socket.reset();
-        m_client->m_connected = false;
-        return std::unexpected(error);
-    }
-
-    try {
-        m_client->m_http_session = std::make_unique<galay::http::HttpSession>(
-            *m_client->m_socket,
-            m_client->m_network_config.buffer_size);
-        m_client->m_connected = true;
-        return {};
-    } catch (const std::exception& ex) {
-        EtcdError error(EtcdErrorType::Internal, std::string("create http session failed: ") + ex.what());
-        m_client->setError(error);
-        m_client->m_http_session.reset();
-        m_client->m_socket.reset();
-        m_client->m_connected = false;
-        return std::unexpected(error);
-    }
+    return m_inner->await_resume();
 }
 
 AsyncEtcdClient::CloseAwaitable::CloseAwaitable(AsyncEtcdClient& client)
@@ -388,11 +399,6 @@ AsyncEtcdClient::CloseAwaitable::CloseAwaitable(AsyncEtcdClient& client)
 bool AsyncEtcdClient::CloseAwaitable::await_ready() const noexcept
 {
     return awaitReady();
-}
-
-bool AsyncEtcdClient::CloseAwaitable::await_suspend(std::coroutine_handle<> handle)
-{
-    return awaitSuspend(handle);
 }
 
 EtcdVoidResult AsyncEtcdClient::CloseAwaitable::await_resume()
@@ -445,11 +451,6 @@ bool AsyncEtcdClient::GetAwaitable::await_ready() const noexcept
     return awaitReady();
 }
 
-bool AsyncEtcdClient::GetAwaitable::await_suspend(std::coroutine_handle<> handle)
-{
-    return awaitSuspend(handle);
-}
-
 EtcdVoidResult AsyncEtcdClient::GetAwaitable::await_resume()
 {
     auto result = resumePost();
@@ -489,11 +490,6 @@ bool AsyncEtcdClient::DeleteAwaitable::await_ready() const noexcept
     return awaitReady();
 }
 
-bool AsyncEtcdClient::DeleteAwaitable::await_suspend(std::coroutine_handle<> handle)
-{
-    return awaitSuspend(handle);
-}
-
 EtcdVoidResult AsyncEtcdClient::DeleteAwaitable::await_resume()
 {
     auto result = resumePost();
@@ -527,11 +523,6 @@ AsyncEtcdClient::GrantLeaseAwaitable::GrantLeaseAwaitable(AsyncEtcdClient& clien
 bool AsyncEtcdClient::GrantLeaseAwaitable::await_ready() const noexcept
 {
     return awaitReady();
-}
-
-bool AsyncEtcdClient::GrantLeaseAwaitable::await_suspend(std::coroutine_handle<> handle)
-{
-    return awaitSuspend(handle);
 }
 
 EtcdVoidResult AsyncEtcdClient::GrantLeaseAwaitable::await_resume()
@@ -573,11 +564,6 @@ AsyncEtcdClient::KeepAliveAwaitable::KeepAliveAwaitable(AsyncEtcdClient& client,
 bool AsyncEtcdClient::KeepAliveAwaitable::await_ready() const noexcept
 {
     return awaitReady();
-}
-
-bool AsyncEtcdClient::KeepAliveAwaitable::await_suspend(std::coroutine_handle<> handle)
-{
-    return awaitSuspend(handle);
 }
 
 EtcdVoidResult AsyncEtcdClient::KeepAliveAwaitable::await_resume()
@@ -625,11 +611,6 @@ AsyncEtcdClient::PipelineAwaitable::PipelineAwaitable(AsyncEtcdClient& client,
 bool AsyncEtcdClient::PipelineAwaitable::await_ready() const noexcept
 {
     return awaitReady();
-}
-
-bool AsyncEtcdClient::PipelineAwaitable::await_suspend(std::coroutine_handle<> handle)
-{
-    return awaitSuspend(handle);
 }
 
 EtcdVoidResult AsyncEtcdClient::PipelineAwaitable::await_resume()
