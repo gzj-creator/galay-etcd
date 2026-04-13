@@ -81,6 +81,14 @@ galay::kernel::IOController& invalidController()
     return controller;
 }
 
+std::string_view trimLeadingSlash(std::string_view path)
+{
+    while (!path.empty() && path.front() == '/') {
+        path.remove_prefix(1);
+    }
+    return path;
+}
+
 } // namespace
 
 AsyncEtcdClient::AsyncEtcdClient(galay::kernel::IOScheduler* scheduler,
@@ -104,6 +112,14 @@ AsyncEtcdClient::AsyncEtcdClient(galay::kernel::IOScheduler* scheduler,
     m_ip_type = endpoint_result->ipv6 ? galay::kernel::IPType::IPV6 : galay::kernel::IPType::IPV4;
     m_server_host.emplace(m_ip_type, endpoint_result->host, endpoint_result->port);
     m_host_header = buildHostHeader(endpoint_result->host, endpoint_result->port, endpoint_result->ipv6);
+    m_serialized_request_prefix = "POST " + m_api_prefix + "/";
+    m_serialized_request_headers =
+        " HTTP/1.1\r\n"
+        "Host: " + m_host_header + "\r\n"
+        "Accept: application/json\r\n"
+        "Connection: " + std::string(m_network_config.keepalive ? "keep-alive" : "close") + "\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: ";
     m_endpoint_valid = true;
 }
 
@@ -111,18 +127,8 @@ AsyncEtcdClient::PostJsonAwaitable::Context::Context(AsyncEtcdClient& client,
                                                      std::string api_path,
                                                      std::string body)
     : owner(&client)
-    , awaitable([&client, api_path = std::move(api_path), body = std::move(body)]() mutable {
-        std::map<std::string, std::string> headers{
-            {"Host", client.m_host_header},
-            {"Accept", "application/json"},
-            {"Connection", client.m_network_config.keepalive ? "keep-alive" : "close"},
-        };
-        return client.m_http_session->post(
-            client.m_api_prefix + api_path,
-            body,
-            "application/json",
-            headers);
-    }())
+    , awaitable(client.m_http_session->sendSerializedRequest(
+          client.buildSerializedPostRequest(api_path, body)))
 {
 }
 
@@ -130,14 +136,14 @@ AsyncEtcdClient::PostJsonAwaitable::PostJsonAwaitable(AsyncEtcdClient& client,
                                                  std::string api_path,
                                                  std::string body,
                                                  std::optional<std::chrono::milliseconds> force_timeout)
-    : m_ctx(nullptr)
+    : m_ctx(std::nullopt)
 {
     if (!client.m_connected || client.m_socket == nullptr || client.m_http_session == nullptr) {
         client.setError(EtcdErrorType::NotConnected, "etcd client is not connected");
         return;
     }
 
-    m_ctx = std::make_unique<Context>(client, std::move(api_path), std::move(body));
+    m_ctx.emplace(client, std::move(api_path), std::move(body));
 
     if (force_timeout.has_value()) {
         m_ctx->awaitable.timeout(force_timeout.value());
@@ -146,16 +152,14 @@ AsyncEtcdClient::PostJsonAwaitable::PostJsonAwaitable(AsyncEtcdClient& client,
     }
 }
 
-AsyncEtcdClient::PostJsonAwaitable::~PostJsonAwaitable() = default;
-
 bool AsyncEtcdClient::PostJsonAwaitable::await_ready() const noexcept
 {
-    return m_ctx == nullptr;
+    return !m_ctx.has_value();
 }
 
 EtcdVoidResult AsyncEtcdClient::PostJsonAwaitable::await_resume()
 {
-    if (m_ctx == nullptr) {
+    if (!m_ctx.has_value()) {
         return std::unexpected(EtcdError(EtcdErrorType::NotConnected, "etcd client is not connected"));
     }
 
@@ -428,6 +432,28 @@ AsyncEtcdClient::PostJsonAwaitable AsyncEtcdClient::postJsonInternal(
     std::optional<std::chrono::milliseconds> force_timeout)
 {
     return PostJsonAwaitable(*this, api_path, body, force_timeout);
+}
+
+std::string AsyncEtcdClient::buildSerializedPostRequest(std::string_view api_path,
+                                                        std::string_view body) const
+{
+    const std::string_view normalized_path = trimLeadingSlash(api_path);
+    const std::string content_length = std::to_string(body.size());
+    std::string request;
+    request.reserve(
+        m_serialized_request_prefix.size() +
+        m_serialized_request_headers.size() +
+        normalized_path.size() +
+        content_length.size() +
+        4 +
+        body.size());
+    request.append(m_serialized_request_prefix);
+    request.append(normalized_path.data(), normalized_path.size());
+    request.append(m_serialized_request_headers);
+    request.append(content_length);
+    request.append("\r\n\r\n");
+    request.append(body.data(), body.size());
+    return request;
 }
 
 AsyncEtcdClient::GetAwaitable::GetAwaitable(AsyncEtcdClient& client,

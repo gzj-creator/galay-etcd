@@ -1,7 +1,7 @@
-find_package(galay-kernel REQUIRED)
-find_package(galay-utils REQUIRED)
-find_package(GalayHttp REQUIRED)
-find_package(spdlog REQUIRED)
+find_package(galay-kernel CONFIG REQUIRED)
+find_package(galay-utils CONFIG REQUIRED)
+find_package(GalayHttp CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SIMDJSON REQUIRED IMPORTED_TARGET simdjson)
 
@@ -41,42 +41,45 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC $<INSTALL_INTERFACE:include>
 )
 
-if(GALAY_ETCD_LOCAL_DEP_INCLUDE_DIRS)
-    target_include_directories(${PROJECT_NAME} BEFORE PRIVATE ${GALAY_ETCD_LOCAL_DEP_INCLUDE_DIRS})
-    foreach(_galay_etcd_local_dep_include IN LISTS GALAY_ETCD_LOCAL_DEP_INCLUDE_DIRS)
-        target_compile_options(${PROJECT_NAME} BEFORE PRIVATE "-I${_galay_etcd_local_dep_include}")
-    endforeach()
-endif()
-
 galay_etcd_apply_cxx(${PROJECT_NAME})
 
 if(GALAY_ETCD_IMPORT_COMPILATION_ENABLED AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
-    target_sources(${PROJECT_NAME}
+    add_library(galay-etcd-modules STATIC)
+    target_link_libraries(galay-etcd-modules PUBLIC ${PROJECT_NAME})
+    target_include_directories(galay-etcd-modules
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+            $<INSTALL_INTERFACE:include>
+    )
+    target_sources(galay-etcd-modules
         PUBLIC
             FILE_SET CXX_MODULES
             FILES ${CMAKE_CURRENT_SOURCE_DIR}/module/galay.etcd.cppm
     )
     if(GALAY_ETCD_IMPORT_COMPILE_OPTIONS)
-        target_compile_options(${PROJECT_NAME} PUBLIC ${GALAY_ETCD_IMPORT_COMPILE_OPTIONS})
+        target_compile_options(galay-etcd-modules PUBLIC ${GALAY_ETCD_IMPORT_COMPILE_OPTIONS})
     endif()
+    set_target_properties(galay-etcd-modules PROPERTIES CXX_SCAN_FOR_MODULES ON)
+    galay_etcd_apply_cxx(galay-etcd-modules)
 endif()
 
+install(TARGETS ${PROJECT_NAME}
+    EXPORT galay-etcd-targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include
+)
+
 if(GALAY_ETCD_IMPORT_COMPILATION_ENABLED AND GALAY_ETCD_INSTALL_MODULE_INTERFACE AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
-    install(TARGETS ${PROJECT_NAME}
+    install(TARGETS galay-etcd-modules
         EXPORT galay-etcd-targets
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib
         RUNTIME DESTINATION bin
         INCLUDES DESTINATION include
         FILE_SET CXX_MODULES DESTINATION include/galay-etcd/module
-    )
-else()
-    install(TARGETS ${PROJECT_NAME}
-        EXPORT galay-etcd-targets
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib
-        RUNTIME DESTINATION bin
-        INCLUDES DESTINATION include
     )
 endif()
 
@@ -86,6 +89,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
     PATTERN "*.h"
     PATTERN "*.hpp"
     PATTERN "*.inl"
+    PATTERN "base/EtcdInternal.h" EXCLUDE
     PATTERN "build" EXCLUDE
     PATTERN "CMakeFiles" EXCLUDE
     PATTERN "*.cc" EXCLUDE

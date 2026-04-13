@@ -5,7 +5,7 @@
 - 同步阻塞客户端：`galay::etcd::EtcdClient`
 - 异步协程客户端：`galay::etcd::AsyncEtcdClient`
 - 共享数据模型：`EtcdConfig`、`AsyncEtcdConfig`、`EtcdKeyValue`、`PipelineOp`
-- CMake 包与可选 C++ module 接口：`galay-etcd::galay-etcd` / `galay.etcd`
+- CMake 包与可选 C++ module 接口：`galay-etcd::galay-etcd`、`galay-etcd::galay-etcd-modules` / `galay.etcd`
 
 ## 文档真相来源
 
@@ -58,7 +58,7 @@ module/import 编译路径的额外条件：
 ```bash
 cmake -S . -B build \
   -D GALAY_ETCD_BUILD_EXAMPLES=ON \
-  -D GALAY_ETCD_BUILD_TESTS=ON \
+  -D BUILD_TESTING=ON \
   -D GALAY_ETCD_BUILD_BENCHMARKS=ON
 
 cmake --build build -j
@@ -78,6 +78,8 @@ curl http://127.0.0.1:2379/version
 # examples/
 ./build/examples/E1-SyncBasic http://127.0.0.1:2379
 ./build/examples/E2-AsyncBasic http://127.0.0.1:2379
+./build/examples/E1-SyncBasicImport http://127.0.0.1:2379
+./build/examples/E2-AsyncBasicImport http://127.0.0.1:2379
 
 # test/
 ./build/test/T1-EtcdSmoke http://127.0.0.1:2379
@@ -86,6 +88,8 @@ curl http://127.0.0.1:2379/version
 ./build/test/T4-AsyncEtcdSmoke http://127.0.0.1:2379
 ./build/test/T5-AsyncEtcdPipeline http://127.0.0.1:2379
 ./build/test/T6-EtcdInternalHelpers
+./build/test/T7-EtcdAwaitableSurface
+./build/test/T8-AsyncBenchmarkSmoke
 
 # benchmark/
 ./build/benchmark/B1-EtcdKvBenchmark http://127.0.0.1:2379 8 500 64 put
@@ -97,6 +101,35 @@ curl http://127.0.0.1:2379/version
 - `T6-EtcdInternalHelpers` 是纯本地校验，不依赖 etcd 服务
 - 公开 `examples/` / `test/` / `benchmark` 在省略 `argv[1]` 时会回落到 `http://127.0.0.1:2379`；企业环境请始终显式传入自己的 endpoint
 - benchmark 结果页只接受“附命令、环境和日期”的数据；旧数字若未复算，一律按历史样本处理
+- 对外发布 benchmark 结论前，必须补上同机、同构建类型、同 workload 的 Rust 基线；当前统一入口是 `scripts/S2-Bench-Rust-Compare.sh`
+- `BUILD_TESTS` 和 `GALAY_ETCD_BUILD_TESTS` 仍可用，但仅作为 `BUILD_TESTING` 的兼容别名
+
+## Rust 对照 benchmark
+
+仓库内现已提供与 `B1/B2` 对齐的 Rust 基线：
+
+- `benchmark/compare/rust/src/bin/rust_sync_etcd_bench.rs`
+- `benchmark/compare/rust/src/bin/rust_async_etcd_bench.rs`
+- `scripts/S2-Bench-Rust-Compare.sh`
+
+Rust 选型是：
+
+- 同步：`reqwest::blocking`
+- 异步：`reqwest` + `tokio`
+
+统一运行方式：
+
+```bash
+GALAY_ETCD_ENDPOINT=http://127.0.0.1:2379 \
+GALAY_ETCD_BENCH_WORKERS=8 \
+GALAY_ETCD_BENCH_OPS_PER_WORKER=125 \
+GALAY_ETCD_BENCH_VALUE_SIZE=32 \
+GALAY_ETCD_BENCH_MODE=put \
+GALAY_ETCD_BENCH_IO_SCHEDULERS=2 \
+./scripts/S2-Bench-Rust-Compare.sh ./build
+```
+
+如果某个 workload 还没有 Rust 基线，就只能按 `internal-only` / 历史样本解释，不能对外宣称为公开 benchmark 结论。
 
 ## 文档导航
 

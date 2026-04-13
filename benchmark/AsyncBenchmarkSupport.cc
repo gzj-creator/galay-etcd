@@ -1,7 +1,9 @@
 #include "AsyncBenchmarkSupport.h"
 
+#include "galay-etcd/sync/EtcdClient.h"
 #include "galay-etcd/async/AsyncEtcdClient.h"
 
+#include <galay-kernel/common/Sleep.hpp>
 #include <galay-kernel/kernel/Runtime.h>
 
 #include <algorithm>
@@ -30,17 +32,21 @@ namespace
 struct SharedState
 {
     explicit SharedState(int worker_count)
-        : pending_workers(worker_count)
-        , latency_by_worker(static_cast<size_t>(worker_count))
+        : latency_by_worker(static_cast<size_t>(worker_count))
     {
     }
 
-    std::atomic<int> pending_workers;
+    std::atomic<int> ready_workers{0};
+    std::atomic<int> startup_failures{0};
+    std::atomic<int> completed_workers{0};
+    std::atomic<int> finalized_workers{0};
     std::atomic<int64_t> success{0};
     std::atomic<int64_t> failure{0};
     std::vector<std::vector<int64_t>> latency_by_worker;
     std::mutex error_mutex;
     std::string first_error;
+    std::atomic<bool> benchmark_started{false};
+    std::atomic<bool> benchmark_aborted{false};
 };
 
 std::string payloadOfSize(int size)
@@ -76,6 +82,28 @@ void rememberFirstError(const std::shared_ptr<SharedState>& state, const std::st
     }
 }
 
+void cleanupPrefix(const AsyncBenchmarkArgs& args,
+                   const std::string& key_prefix,
+                   const std::shared_ptr<SharedState>& state)
+{
+    EtcdConfig config;
+    config.endpoint = args.endpoint;
+
+    auto session = EtcdClientBuilder().config(config).build();
+    auto connect_result = session.connect();
+    if (!connect_result.has_value()) {
+        rememberFirstError(state, "cleanup connect failed: " + connect_result.error().message());
+        return;
+    }
+
+    auto delete_result = session.del(key_prefix, true);
+    if (!delete_result.has_value()) {
+        rememberFirstError(state, "cleanup delete failed: " + delete_result.error().message());
+    }
+
+    (void)session.close();
+}
+
 Task<void> runWorker(std::shared_ptr<SharedState> state,
                      int worker_id,
                      AsyncBenchmarkArgs args,
@@ -83,10 +111,6 @@ Task<void> runWorker(std::shared_ptr<SharedState> state,
                      std::string value,
                      IOScheduler* scheduler)
 {
-    auto finish = [&]() {
-        state->pending_workers.fetch_sub(1, std::memory_order_release);
-    };
-
     int completed_ops = 0;
 
     try {
@@ -97,8 +121,37 @@ Task<void> runWorker(std::shared_ptr<SharedState> state,
         auto connect_result = co_await client.connect();
         if (!connect_result.has_value()) {
             rememberFirstError(state, connect_result.error().message());
-            state->failure.fetch_add(args.ops_per_worker, std::memory_order_relaxed);
-            finish();
+            state->startup_failures.fetch_add(1, std::memory_order_release);
+            co_return;
+        }
+
+        const std::string warmup_key = key_prefix + "warmup/" + std::to_string(worker_id);
+        auto warmup_result = co_await client.get(warmup_key);
+        if (!warmup_result.has_value()) {
+            rememberFirstError(state, "warmup get failed: " + warmup_result.error().message());
+            state->startup_failures.fetch_add(1, std::memory_order_release);
+            (void)co_await client.close();
+            co_return;
+        }
+        if (!client.lastKeyValues().empty()) {
+            rememberFirstError(state, "warmup verification failed");
+            state->startup_failures.fetch_add(1, std::memory_order_release);
+            (void)co_await client.close();
+            co_return;
+        }
+
+        state->ready_workers.fetch_add(1, std::memory_order_release);
+        while (!state->benchmark_started.load(std::memory_order_acquire) &&
+               !state->benchmark_aborted.load(std::memory_order_acquire)) {
+            co_await galay::kernel::sleep(std::chrono::milliseconds(1));
+        }
+
+        if (state->benchmark_aborted.load(std::memory_order_acquire)) {
+            auto close_result = co_await client.close();
+            if (!close_result.has_value()) {
+                rememberFirstError(state, close_result.error().message());
+            }
+            state->finalized_workers.fetch_add(1, std::memory_order_release);
             co_return;
         }
 
@@ -146,10 +199,12 @@ Task<void> runWorker(std::shared_ptr<SharedState> state,
             ++completed_ops;
         }
 
+        state->completed_workers.fetch_add(1, std::memory_order_release);
         auto close_result = co_await client.close();
         if (!close_result.has_value()) {
             rememberFirstError(state, close_result.error().message());
         }
+        state->finalized_workers.fetch_add(1, std::memory_order_release);
     } catch (const std::exception& ex) {
         rememberFirstError(state, ex.what());
         state->failure.fetch_add(args.ops_per_worker - completed_ops, std::memory_order_relaxed);
@@ -157,8 +212,6 @@ Task<void> runWorker(std::shared_ptr<SharedState> state,
         rememberFirstError(state, "unknown async benchmark worker exception");
         state->failure.fetch_add(args.ops_per_worker - completed_ops, std::memory_order_relaxed);
     }
-
-    finish();
 }
 
 } // namespace
@@ -231,7 +284,6 @@ runAsyncBenchmark(const AsyncBenchmarkArgs& args)
     const std::string value = payloadOfSize(args.value_size);
     const std::string key_prefix = "/galay-etcd/bench/async/" + nowSuffix() + "/";
 
-    const auto begin = std::chrono::steady_clock::now();
     for (int worker_id = 0; worker_id < args.workers; ++worker_id) {
         IOScheduler* scheduler = schedulers[static_cast<size_t>(worker_id % io_schedulers)];
         if (!galay::kernel::scheduleTask(
@@ -243,18 +295,40 @@ runAsyncBenchmark(const AsyncBenchmarkArgs& args)
     }
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(args.timeout_seconds);
-    while (state->pending_workers.load(std::memory_order_acquire) > 0 &&
+    while (state->ready_workers.load(std::memory_order_acquire) +
+               state->startup_failures.load(std::memory_order_acquire) < args.workers &&
            std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    if (state->pending_workers.load(std::memory_order_acquire) > 0) {
+    if (state->startup_failures.load(std::memory_order_acquire) != 0 ||
+        state->ready_workers.load(std::memory_order_acquire) != args.workers) {
+        state->benchmark_aborted.store(true, std::memory_order_release);
+        runtime.stop();
+        return std::unexpected(
+            state->first_error.empty() ? "async benchmark startup failed" : state->first_error);
+    }
+
+    state->benchmark_started.store(true, std::memory_order_release);
+    const auto begin = std::chrono::steady_clock::now();
+    while (state->completed_workers.load(std::memory_order_acquire) < args.workers &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    if (state->completed_workers.load(std::memory_order_acquire) < args.workers) {
         runtime.stop();
         return std::unexpected("async benchmark timeout after " + std::to_string(args.timeout_seconds) + " seconds");
     }
 
     const auto end = std::chrono::steady_clock::now();
+    while (state->finalized_workers.load(std::memory_order_acquire) +
+               state->startup_failures.load(std::memory_order_acquire) < args.workers &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     runtime.stop();
+    cleanupPrefix(args, key_prefix, state);
 
     AsyncBenchmarkResult result;
     result.endpoint = args.endpoint;

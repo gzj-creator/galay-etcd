@@ -1,0 +1,18 @@
+[package]
+name = "galay-etcd-rust-bench"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rust_sync_etcd_bench"
+path = "src/bin/rust_sync_etcd_bench.rs"
+
+[[bin]]
+name = "rust_async_etcd_bench"
+path = "src/bin/rust_async_etcd_bench.rs"
+
+[dependencies]
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

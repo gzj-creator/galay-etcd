@@ -1,10 +1,12 @@
 #include "benchmark/AsyncBenchmarkSupport.h"
 
 #include <iostream>
+#include <string>
 
-int main()
+int main(int argc, char** argv)
 {
     galay::etcd::benchmark::AsyncBenchmarkArgs args;
+    args.endpoint = argc > 1 ? argv[1] : "http://127.0.0.1:2379";
     args.workers = 1;
     args.ops_per_worker = 1;
     args.value_size = 16;

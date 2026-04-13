@@ -16,11 +16,11 @@
 #include <cstdint>
 #include <coroutine>
 #include <expected>
-#include <map>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -43,12 +43,9 @@ private:
     using ConnectIoAwaitable =
         decltype(std::declval<galay::async::TcpSocket&>().connect(std::declval<const galay::kernel::Host&>()));
     using CloseIoAwaitable = decltype(std::declval<galay::async::TcpSocket&>().close());
-    using HttpPostAwaitable =
-        decltype(std::declval<galay::http::HttpSession&>().post(
-            std::declval<const std::string&>(),
-            std::declval<const std::string&>(),
-            std::declval<const std::string&>(),
-            std::declval<const std::map<std::string, std::string>&>()));
+    using HttpSerializedRequestAwaitable =
+        decltype(std::declval<galay::http::HttpSession&>().sendSerializedRequest(
+            std::declval<std::string>()));
 
     template <typename AwaitableType>
     class IoAwaitableBase
@@ -180,7 +177,6 @@ public:
         PostJsonAwaitable& operator=(const PostJsonAwaitable&) = delete;
         PostJsonAwaitable(PostJsonAwaitable&&) noexcept = default;
         PostJsonAwaitable& operator=(PostJsonAwaitable&&) noexcept = default;
-        ~PostJsonAwaitable();
 
         bool await_ready() const noexcept;
         template <typename Promise>
@@ -194,13 +190,13 @@ public:
         struct Context
         {
             AsyncEtcdClient* owner = nullptr;
-            HttpPostAwaitable awaitable;
+            HttpSerializedRequestAwaitable awaitable;
 
             Context(AsyncEtcdClient& client,
                     std::string api_path,
                     std::string body);
         };
-        std::unique_ptr<Context> m_ctx;
+        std::optional<Context> m_ctx;
     };
 
 private:
@@ -396,6 +392,8 @@ private:
 
     [[nodiscard]] EtcdVoidResult currentResult() const;
     EtcdVoidResult resumePostOrCurrent(std::optional<PostJsonAwaitable>& post_awaitable);
+    [[nodiscard]] std::string buildSerializedPostRequest(std::string_view api_path,
+                                                         std::string_view body) const;
 
     PostJsonAwaitable postJsonInternal(const std::string& api_path,
                                        const std::string& body,
@@ -407,6 +405,8 @@ private:
     EtcdNetworkConfig m_network_config;
     std::string m_api_prefix;
     std::string m_host_header;
+    std::string m_serialized_request_prefix;
+    std::string m_serialized_request_headers;
     galay::kernel::IPType m_ip_type = galay::kernel::IPType::IPV4;
     std::optional<galay::kernel::Host> m_server_host;
     std::string m_endpoint_error;

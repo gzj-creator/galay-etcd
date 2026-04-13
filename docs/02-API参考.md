@@ -6,7 +6,6 @@
 
 当前安装包会安装这些头文件：
 
-- `galay-etcd/base/EtcdInternal.h`
 - `galay-etcd/base/EtcdNetworkConfig.h`
 - `galay-etcd/base/EtcdConfig.h`
 - `galay-etcd/base/EtcdError.h`
@@ -21,7 +20,7 @@
 
 安装面补充说明：
 
-- `galay-etcd/base/EtcdInternal.h` 暴露的是 `galay::etcd::internal` 命名空间中的内联 helper；它会直接包含 `<simdjson.h>`，因此安装包 target 也会导出 `PkgConfig::SIMDJSON`
+- `galay-etcd/base/EtcdInternal.h` 是源码树内部 helper 头，不属于安装/export 契约
 - `galay-etcd/base/EtcdLog.h` 是可选日志辅助接口，提供 `EtcdLog` / `EtcdLoggerPtr`
 - `galay-etcd/module/ModulePrelude.hpp` 是 `galay-etcd/module/galay.etcd.cppm` 的 global module fragment 支撑头，不是 header 模式下的首选入口
 - `galay-etcd/module/galay.etcd.cppm` 是真实模块接口文件；它回答 module 模式下的公开导出边界
@@ -30,16 +29,17 @@
 
 - 子目录 target：`galay-etcd`
 - 安装后 imported target：`galay-etcd::galay-etcd`
+- 安装后 module facade target：`galay-etcd::galay-etcd-modules`（启用 import 编译时）
 - 安装后 `find_package` 名称：`galay-etcd`
 - C++ module：`galay.etcd`
 
 `galay.etcd` 的 module 导出边界，以 `galay-etcd/module/galay.etcd.cppm` 中的 `export { ... }` 块为准：
 
 - 会被 `import galay.etcd;` 直接导出的头：`EtcdConfig.h`、`EtcdError.h`、`EtcdValue.h`、`EtcdTypes.h`、`EtcdNetworkConfig.h`、`AsyncEtcdConfig.h`、`AsyncEtcdClient.h`、`EtcdClient.h`
-- 不在当前 module 导出边界内的安装头：`EtcdLog.h`、`EtcdInternal.h`
+- 不在当前 module 导出边界内的安装头：`EtcdLog.h`
 - `ModulePrelude.hpp` 虽然在 global module fragment 中 `#include` 了更多头，但它不是额外的导出清单
 
-因此，如果你需要日志 helper 或 `galay::etcd::internal` helper，当前应继续直接 `#include` 对应头文件，而不是只依赖 `import galay.etcd;`。
+因此，如果你需要日志 helper，当前应继续直接 `#include` 对应头文件，而不是只依赖 `import galay.etcd;`。`galay::etcd::internal` helper 仅供源码树内部（例如 `test/T6`）使用。
 
 ## 2. 基础类型与可选日志辅助
 
@@ -491,14 +491,15 @@ public:
   - 成功副作用：写入 `lastPipelineResults()`，并把 `lastBool()` 设为 `true`
   - 额外状态：构造时会捕获一份 `PipelineOpType` 列表，用于在响应阶段按操作顺序解释每一项 txn 返回
 
-## 5. `galay::etcd::internal` header-only surface
+## 5. `galay::etcd::internal` source-tree helper surface
 
-`galay-etcd/base/EtcdInternal.h` 是已安装的 header-only helper 集合，命名空间为 `galay::etcd::internal`。
+`galay-etcd/base/EtcdInternal.h` 是源码树内部 helper 集合（`galay::etcd::internal`），用于库实现与仓内测试。
 
 使用边界：
 
 - 当前它**不在** `galay.etcd` module 的导出边界里
-- 所有函数都是 inline / header-only 形式；适合测试、适配层或自定义封装直接复用
+- 当前它**不在**安装/export 契约里
+- 所有函数都是 inline / header-only 形式；当前建议仅在源码树内部使用
 - 同一头里还有一些更底层的数字 / 字符串 / base64 / simdjson 辅助函数；下面优先列出最适合作为外部调用入口的分组 API
 
 ### endpoint / prefix 相关 helper
@@ -649,8 +650,8 @@ std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineTxnRespon
 
 ## 8. 交叉验证入口
 
-- 同步基础示例：`examples/E1-sync_basic.cc`
-- 异步基础示例：`examples/E2-async_basic.cc`
+- 同步基础示例：`examples/include/E1-sync_basic.cc`
+- 异步基础示例：`examples/include/E2-async_basic.cc`
 - 测试入口统一位于 `test/`，用于交叉验证同步、异步、prefix 与 pipeline 语义
 - 同步 smoke：`test/T1-etcd_smoke.cc`
 - prefix / range 语义：`test/T2-etcd_prefix_ops.cc`
