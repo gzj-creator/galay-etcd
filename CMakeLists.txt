@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(galay-etcd VERSION 1.1.3 LANGUAGES CXX)
+project(galay-etcd VERSION 1.1.4 LANGUAGES CXX)
 
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
 set(CMAKE_NO_SYSTEM_FROM_IMPORTED ON)
