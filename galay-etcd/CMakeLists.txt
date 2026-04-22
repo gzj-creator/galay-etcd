@@ -113,7 +113,7 @@ install(EXPORT galay-etcd-targets
 
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/GalayEtcdConfig.cmake.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-etcd-config.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfig.cmake"
     INSTALL_DESTINATION lib/cmake/galay-etcd
 )

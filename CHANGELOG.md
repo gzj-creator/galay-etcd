@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+## [v1.1.6] - 2026-04-23
+
+### Changed
+- 将源码仓库中的包配置模板重命名为统一的小写 kebab-case `galay-etcd-config.cmake.in`，消除与其他 `galay-*` 项目的命名分歧。
+- 同步更新 `configure_package_config_file(...)` 的模板路径，保持安装导出的 `GalayEtcdConfig.cmake` / `GalayEtcdConfigVersion.cmake` 兼容不变。
+
 ## [v1.1.5] - 2026-04-22
 
 ### Chore
