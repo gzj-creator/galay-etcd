@@ -1,8 +1,10 @@
 build/
+build-*/
 .cache/
 compile_commands.json
 *.o
 *.so
 *.dylib
 *.a
+*.log
 .DS_Store
