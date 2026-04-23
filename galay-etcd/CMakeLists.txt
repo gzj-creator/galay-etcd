@@ -1,6 +1,6 @@
 find_package(galay-kernel 3.4.4 CONFIG REQUIRED)
 find_package(galay-utils 1.0.3 CONFIG REQUIRED)
-find_package(GalayHttp 2.0.2 CONFIG REQUIRED)
+find_package(GalayHttp 2.1.0 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SIMDJSON REQUIRED IMPORTED_TARGET simdjson)

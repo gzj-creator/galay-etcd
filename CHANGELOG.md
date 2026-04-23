@@ -14,6 +14,9 @@
 - 将源码仓库中的包配置模板重命名为统一的小写 kebab-case `galay-etcd-config.cmake.in`，消除与其他 `galay-*` 项目的命名分歧。
 - 同步更新 `configure_package_config_file(...)` 的模板路径，保持安装导出的 `GalayEtcdConfig.cmake` / `GalayEtcdConfigVersion.cmake` 兼容不变。
 
+### Fixed
+- 将源码构建与安装导出配置中的 `GalayHttp` 最低依赖版本从 `2.0.2` 修正为 `2.1.0`，与 `AsyncEtcdClient` 实际使用的 `HttpSession::sendSerializedRequest(...)` API 保持一致。
+
 ## [v1.1.5] - 2026-04-22
 
 ### Chore

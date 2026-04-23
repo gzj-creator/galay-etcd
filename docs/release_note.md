@@ -5,11 +5,12 @@
 ## v1.1.6 - 2026-04-23
 
 - 版本级别：小版本（patch）
-- Git 提交消息：`chore: 发布 v1.1.6`
+- Git 提交消息：`fix: 修正 galay-etcd 的 GalayHttp 最低依赖版本`
 - Git Tag：`v1.1.6`
 - 自述摘要：
   - 将源码仓库里的包配置模板统一为小写 kebab-case 命名，避免 `galay-etcd` 与其他 `galay-*` 项目在模板文件名上继续分叉。
   - 同步调整 `configure_package_config_file(...)` 的输入路径，同时保持安装后的 `GalayEtcdConfig.cmake` 与版本文件名不变，避免影响现有下游消费。
+  - 将源码构建与安装导出配置中的 `GalayHttp` 最低依赖版本从 `2.0.2` 修正为 `2.1.0`，避免下游按旧版本约束解析后缺失 `HttpSession::sendSerializedRequest(...)`。
 
 ## v1.1.5 - 2026-04-22
 
