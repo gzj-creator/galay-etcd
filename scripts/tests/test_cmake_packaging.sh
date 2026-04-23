@@ -28,8 +28,7 @@ write_file() {
 DUMMY_PREFIX="$TMP_ROOT/dummy-prefix"
 BUILD_DIR="$TMP_ROOT/build"
 INSTALL_PREFIX="$TMP_ROOT/install"
-MAIN_CONSUMER="$TMP_ROOT/main-consumer"
-COMPAT_CONSUMER="$TMP_ROOT/compat-consumer"
+CONSUMER="$TMP_ROOT/consumer"
 
 mkdir -p "$DUMMY_PREFIX/lib/cmake" "$DUMMY_PREFIX/lib/pkgconfig" "$DUMMY_PREFIX/include" "$DUMMY_PREFIX/lib"
 : > "$DUMMY_PREFIX/lib/libsimdjson.a"
@@ -58,13 +57,13 @@ set(PACKAGE_VERSION_COMPATIBLE TRUE)
 set(PACKAGE_VERSION_EXACT TRUE)
 EOF
 
-write_file "$DUMMY_PREFIX/lib/cmake/GalayHttp/GalayHttpConfig.cmake" <<'EOF'
-if(NOT TARGET GalayHttp::galay-http)
-    add_library(GalayHttp::galay-http INTERFACE IMPORTED)
+write_file "$DUMMY_PREFIX/lib/cmake/galay-http/galay-http-config.cmake" <<'EOF'
+if(NOT TARGET galay-http::galay-http)
+    add_library(galay-http::galay-http INTERFACE IMPORTED)
 endif()
 EOF
 
-write_file "$DUMMY_PREFIX/lib/cmake/GalayHttp/GalayHttpConfigVersion.cmake" <<'EOF'
+write_file "$DUMMY_PREFIX/lib/cmake/galay-http/galay-http-config-version.cmake" <<'EOF'
 set(PACKAGE_VERSION "2.1.0")
 set(PACKAGE_VERSION_COMPATIBLE TRUE)
 set(PACKAGE_VERSION_EXACT TRUE)
@@ -118,23 +117,16 @@ done
 
 cmake -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" -P "$INSTALL_SCRIPT" >/dev/null
 
-write_file "$MAIN_CONSUMER/CMakeLists.txt" <<'EOF'
+[ -f "$INSTALL_PREFIX/lib/cmake/galay-etcd/galay-etcd-config.cmake" ] \
+    || fail "missing installed config file"
+[ -f "$INSTALL_PREFIX/lib/cmake/galay-etcd/galay-etcd-config-version.cmake" ] \
+    || fail "missing installed config-version file"
+[ -f "$INSTALL_PREFIX/lib/cmake/galay-etcd/galay-etcd-targets.cmake" ] \
+    || fail "missing installed targets file"
+
+write_file "$CONSUMER/CMakeLists.txt" <<'EOF'
 cmake_minimum_required(VERSION 3.20)
-project(galay_etcd_main_consumer LANGUAGES CXX)
-
-find_package(GalayEtcd REQUIRED CONFIG)
-
-if(NOT TARGET galay-etcd::galay-etcd)
-    message(FATAL_ERROR "galay-etcd::galay-etcd target is missing from GalayEtcd package")
-endif()
-EOF
-
-cmake -S "$MAIN_CONSUMER" -B "$TMP_ROOT/main-build" \
-    -DCMAKE_PREFIX_PATH="$INSTALL_PREFIX;$DUMMY_PREFIX" >/dev/null
-
-write_file "$COMPAT_CONSUMER/CMakeLists.txt" <<'EOF'
-cmake_minimum_required(VERSION 3.20)
-project(galay_etcd_compat_consumer LANGUAGES CXX)
+project(galay_etcd_consumer LANGUAGES CXX)
 
 find_package(galay-etcd REQUIRED CONFIG)
 
@@ -143,7 +135,7 @@ if(NOT TARGET galay-etcd::galay-etcd)
 endif()
 EOF
 
-cmake -S "$COMPAT_CONSUMER" -B "$TMP_ROOT/compat-build" \
+cmake -S "$CONSUMER" -B "$TMP_ROOT/consumer-build" \
     -DCMAKE_PREFIX_PATH="$INSTALL_PREFIX;$DUMMY_PREFIX" >/dev/null
 
 printf '%s\n' "ok"

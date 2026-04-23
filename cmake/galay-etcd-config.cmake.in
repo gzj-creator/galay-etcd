@@ -4,7 +4,9 @@ include(CMakeFindDependencyMacro)
 
 find_dependency(galay-kernel 3.4.4 REQUIRED CONFIG)
 find_dependency(galay-utils 1.0.3 REQUIRED CONFIG)
-find_dependency(GalayHttp 2.1.0 REQUIRED CONFIG)
+find_dependency(galay-http 2.1.0 REQUIRED CONFIG)
 find_dependency(spdlog CONFIG)
 
-include("${CMAKE_CURRENT_LIST_DIR}/GalayEtcdTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/galay-etcd-targets.cmake")
+
+check_required_components(galay-etcd)

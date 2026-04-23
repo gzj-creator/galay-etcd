@@ -8,6 +8,14 @@
 
 ## [Unreleased]
 
+### Changed
+- 将安装导出的 CMake package 文件统一为小写 kebab-case：`galay-etcd-config.cmake`、`galay-etcd-config-version.cmake` 与 `galay-etcd-targets.cmake`。
+- 将内部 HTTP 依赖切换为 `find_package(galay-http 2.1.0 CONFIG REQUIRED)` 与 `galay-http::galay-http`。
+- 删除旧的 `GalayEtcd` 主包和 `galay-etcdConfig.cmake` 兼容入口，安装后只保留小写包名。
+
+### Tests
+- 更新 CMake packaging smoke，只验证 `find_package(galay-etcd REQUIRED CONFIG)` 和小写安装文件。
+
 ## [v1.1.8] - 2026-04-23
 
 ### Fixed

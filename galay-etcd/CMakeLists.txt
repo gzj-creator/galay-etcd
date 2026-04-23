@@ -1,6 +1,6 @@
 find_package(galay-kernel 3.4.4 CONFIG REQUIRED)
 find_package(galay-utils 1.0.3 CONFIG REQUIRED)
-find_package(GalayHttp 2.1.0 CONFIG REQUIRED)
+find_package(galay-http 2.1.0 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SIMDJSON REQUIRED IMPORTED_TARGET simdjson)
@@ -13,8 +13,8 @@ if(NOT TARGET galay::galay-utils)
     message(FATAL_ERROR "galay::galay-utils target not found. Please check galay-utils installation.")
 endif()
 
-if(NOT TARGET GalayHttp::galay-http)
-    message(FATAL_ERROR "GalayHttp::galay-http target not found. Please check galay-http installation.")
+if(NOT TARGET galay-http::galay-http)
+    message(FATAL_ERROR "galay-http::galay-http target not found. Please check galay-http installation.")
 endif()
 
 file(GLOB SOURCES
@@ -29,7 +29,7 @@ set_property(TARGET ${PROJECT_NAME} PROPERTY NO_SYSTEM_FROM_IMPORTED ON)
 target_link_libraries(${PROJECT_NAME}
     PUBLIC galay-kernel::galay-kernel
     PUBLIC galay::galay-utils
-    PUBLIC GalayHttp::galay-http
+    PUBLIC galay-http::galay-http
     PUBLIC spdlog::spdlog
     PUBLIC pthread
     PRIVATE PkgConfig::SIMDJSON
@@ -105,11 +105,10 @@ if(GALAY_ETCD_INSTALL_MODULE_INTERFACE AND NOT GALAY_ETCD_IMPORT_COMPILATION_ENA
     endif()
 endif()
 
-set(GALAY_ETCD_CMAKE_PACKAGE_DIR "lib/cmake/GalayEtcd")
-set(GALAY_ETCD_CMAKE_COMPAT_PACKAGE_DIR "lib/cmake/galay-etcd")
+set(GALAY_ETCD_CMAKE_PACKAGE_DIR "lib/cmake/galay-etcd")
 
 install(EXPORT galay-etcd-targets
-    FILE GalayEtcdTargets.cmake
+    FILE galay-etcd-targets.cmake
     NAMESPACE galay-etcd::
     DESTINATION ${GALAY_ETCD_CMAKE_PACKAGE_DIR}
 )
@@ -117,45 +116,18 @@ install(EXPORT galay-etcd-targets
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-etcd-config.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfig.cmake"
-    INSTALL_DESTINATION ${GALAY_ETCD_CMAKE_PACKAGE_DIR}
-)
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-etcd-compat-config.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcdConfig.cmake"
-    @ONLY
-)
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-etcd-compat-config.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/galay-etcd-config.cmake"
-    @ONLY
+    INSTALL_DESTINATION ${GALAY_ETCD_CMAKE_PACKAGE_DIR}
 )
 
 write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcd-config-version.cmake"
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY AnyNewerVersion
 )
-configure_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfigVersion.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcdConfigVersion.cmake"
-    COPYONLY
-)
-configure_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfigVersion.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcd-config-version.cmake"
-    COPYONLY
-)
 
 install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfigVersion.cmake"
-    DESTINATION ${GALAY_ETCD_CMAKE_PACKAGE_DIR}
-)
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcdConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/galay-etcd-config.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcdConfigVersion.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/galay-etcd-config-version.cmake"
-    DESTINATION ${GALAY_ETCD_CMAKE_COMPAT_PACKAGE_DIR}
+    DESTINATION ${GALAY_ETCD_CMAKE_PACKAGE_DIR}
 )

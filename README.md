@@ -40,7 +40,7 @@
 | --- | --- | --- |
 | C++ 标准 | C++23 | `cmake/option.cmake` |
 | CMake | `>= 3.20` | `CMakeLists.txt` |
-| 内部依赖 | `galay-kernel`、`galay-utils`、`GalayHttp` | `galay-etcd/CMakeLists.txt` |
+| 内部依赖 | `galay-kernel`、`galay-utils`、`galay-http` | `galay-etcd/CMakeLists.txt` |
 | 第三方依赖 | `spdlog`、`simdjson`（通过 `pkg-config simdjson`） | `galay-etcd/CMakeLists.txt` |
 | 默认构建项 | tests / benchmarks / examples 默认开启 | `cmake/option.cmake` |
 | module/import 编译 | 仅在受支持工具链下启用 | `cmake/option.cmake` |
