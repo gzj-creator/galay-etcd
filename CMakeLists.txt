@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
-project(galay-etcd VERSION 1.1.4 LANGUAGES CXX)
+project(galay-etcd VERSION 1.1.7 LANGUAGES CXX)
 
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
 set(CMAKE_NO_SYSTEM_FROM_IMPORTED ON)
 
-include(CTest)
 include(cmake/option.cmake)
+include(CTest)
 
 message(STATUS "GALAY_ETCD_CXX_STANDARD: ${GALAY_ETCD_CXX_STANDARD}")
 message(STATUS "GALAY_ETCD_BUILD_SHARED_LIBS: ${GALAY_ETCD_BUILD_SHARED_LIBS}")

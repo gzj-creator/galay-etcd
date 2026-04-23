@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+## [v1.1.7] - 2026-04-23
+
+### Changed
+- 将测试构建主入口统一到 `BUILD_TESTING`，并在用户未显式开启时默认强制关闭测试树。
+- 保留 `GALAY_ETCD_BUILD_TESTS` 与 `BUILD_TESTS` 兼容映射，已有脚本仍可显式开启测试目标。
+
 ## [v1.1.6] - 2026-04-23
 
 ### Changed
