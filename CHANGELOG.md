@@ -8,6 +8,15 @@
 
 ## [Unreleased]
 
+## [v1.1.8] - 2026-04-23
+
+### Fixed
+- 将主包配置安装目录从 `lib/cmake/galay-etcd` 调整为 `lib/cmake/GalayEtcd`，修复 `find_package(GalayEtcd CONFIG REQUIRED)` 无法自动命中安装包的问题。
+- 补充 `galay-etcd` 兼容配置入口与版本文件，继续支持旧的 `find_package(galay-etcd CONFIG REQUIRED)` 消费方式。
+
+### Added
+- 新增 `scripts/tests/test_cmake_packaging.sh`，覆盖 `GalayEtcd` / `galay-etcd` 双入口的安装后包查找回归。
+
 ## [v1.1.7] - 2026-04-23
 
 ### Changed

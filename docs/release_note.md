@@ -39,3 +39,13 @@
 - 自述摘要：
   - 锁定 `galay-kernel 3.4.4`、`galay-utils 1.0.3` 与 `GalayHttp 2.0.2` 的依赖版本，确保 `galay-etcd` 在最新基础库前缀下稳定解析依赖。
   - 同步更新安装导出的 `GalayEtcdConfig.cmake` 依赖声明，避免下游回落到旧版本基础库。
+
+## v1.1.8 - 2026-04-23
+
+- 版本级别：小版本（patch）
+- Git 提交消息：`chore: 发布 v1.1.8`
+- Git Tag：`v1.1.8`
+- 自述摘要：
+  - 将主包配置的安装目录调整为 `lib/cmake/GalayEtcd`，修复下游 `find_package(GalayEtcd CONFIG REQUIRED)` 无法自动发现安装包的问题。
+  - 补充 `galay-etcd` 兼容配置入口与对应版本文件，继续兼容文档和旧脚本使用的 `find_package(galay-etcd CONFIG REQUIRED)`。
+  - 新增 `scripts/tests/test_cmake_packaging.sh`，回归验证两种包名入口都能在安装后正确解析。

@@ -105,17 +105,30 @@ if(GALAY_ETCD_INSTALL_MODULE_INTERFACE AND NOT GALAY_ETCD_IMPORT_COMPILATION_ENA
     endif()
 endif()
 
+set(GALAY_ETCD_CMAKE_PACKAGE_DIR "lib/cmake/GalayEtcd")
+set(GALAY_ETCD_CMAKE_COMPAT_PACKAGE_DIR "lib/cmake/galay-etcd")
+
 install(EXPORT galay-etcd-targets
     FILE GalayEtcdTargets.cmake
     NAMESPACE galay-etcd::
-    DESTINATION lib/cmake/galay-etcd
+    DESTINATION ${GALAY_ETCD_CMAKE_PACKAGE_DIR}
 )
 
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-etcd-config.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfig.cmake"
-    INSTALL_DESTINATION lib/cmake/galay-etcd
+    INSTALL_DESTINATION ${GALAY_ETCD_CMAKE_PACKAGE_DIR}
+)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-etcd-compat-config.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcdConfig.cmake"
+    @ONLY
+)
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-etcd-compat-config.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcd-config.cmake"
+    @ONLY
 )
 
 write_basic_package_version_file(
@@ -123,9 +136,26 @@ write_basic_package_version_file(
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY AnyNewerVersion
 )
+configure_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcdConfigVersion.cmake"
+    COPYONLY
+)
+configure_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcd-config-version.cmake"
+    COPYONLY
+)
 
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/GalayEtcdConfigVersion.cmake"
-    DESTINATION lib/cmake/galay-etcd
+    DESTINATION ${GALAY_ETCD_CMAKE_PACKAGE_DIR}
+)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcdConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcd-config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcdConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-etcd-config-version.cmake"
+    DESTINATION ${GALAY_ETCD_CMAKE_COMPAT_PACKAGE_DIR}
 )
