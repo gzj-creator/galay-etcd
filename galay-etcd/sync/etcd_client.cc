@@ -1,6 +1,6 @@
-#include "EtcdClient.h"
+#include "etcd_client.h"
 
-#include "galay-etcd/base/EtcdInternal.h"
+#include "galay-etcd/base/etcd_internal.h"
 
 #include <algorithm>
 #include <array>

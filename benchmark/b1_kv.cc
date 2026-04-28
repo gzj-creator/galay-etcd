@@ -1,4 +1,4 @@
-#include "galay-etcd/sync/EtcdClient.h"
+#include "galay-etcd/sync/etcd_client.h"
 
 #include <algorithm>
 #include <atomic>

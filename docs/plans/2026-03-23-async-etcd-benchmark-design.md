@@ -4,7 +4,7 @@
 
 ## 背景
 
-当前仓库只有 [benchmark/B1-etcd_kv_benchmark.cc](/Users/gongzhijie/Desktop/projects/git/galay-etcd/benchmark/B1-etcd_kv_benchmark.cc)，它使用同步 `EtcdClient` 做多线程串行 `put`/`mixed(put+get)` 压测。这个结果可以作为同步基线，但不能体现 `AsyncEtcdClient` 接入最新 `galay-kernel` 后的真实异步性能。
+当前仓库只有 [benchmark/b1_kv.cc](/Users/gongzhijie/Desktop/projects/git/galay-etcd/benchmark/b1_kv.cc)，它使用同步 `EtcdClient` 做多线程串行 `put`/`mixed(put+get)` 压测。这个结果可以作为同步基线，但不能体现 `AsyncEtcdClient` 接入最新 `galay-kernel` 后的真实异步性能。
 
 ## 设计目标
 
@@ -64,10 +64,10 @@
 
 ## 代码结构
 
-- 新增 `benchmark/AsyncBenchmarkSupport.h`
-- 新增 `benchmark/AsyncBenchmarkSupport.cc`
-- 新增 `benchmark/B2-async_etcd_kv_benchmark.cc`
-- 新增 `test/T8-async_benchmark_smoke.cc`
+- 新增 `benchmark/bench_support.h`
+- 新增 `benchmark/bench_support.cc`
+- 新增 `benchmark/b2_kv.cc`
+- 新增 `test/t8_bench.cc`
 - 更新 `benchmark/CMakeLists.txt`
 - 更新 `test/CMakeLists.txt`
 

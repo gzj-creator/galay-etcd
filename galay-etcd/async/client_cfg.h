@@ -1,7 +1,7 @@
 #ifndef GALAY_ETCD_ASYNC_CONFIG_H
 #define GALAY_ETCD_ASYNC_CONFIG_H
 
-#include "galay-etcd/base/EtcdConfig.h"
+#include "galay-etcd/base/etcd_config.h"
 
 namespace galay::etcd
 {

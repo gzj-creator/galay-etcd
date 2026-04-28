@@ -1,8 +1,8 @@
-#include "AsyncEtcdClient.h"
+#include "etcd_client.h"
 
-#include "galay-etcd/base/EtcdInternal.h"
+#include "galay-etcd/base/etcd_internal.h"
 
-#include <galay-http/protoc/http/HttpError.h>
+#include <galay-http/protoc/http/http_error.h>
 
 #include <exception>
 #include <utility>

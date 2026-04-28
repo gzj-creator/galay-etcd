@@ -1,7 +1,7 @@
 #ifndef GALAY_ETCD_TYPES_H
 #define GALAY_ETCD_TYPES_H
 
-#include "galay-etcd/base/EtcdValue.h"
+#include "galay-etcd/base/etcd_value.h"
 
 #include <cstdint>
 #include <optional>

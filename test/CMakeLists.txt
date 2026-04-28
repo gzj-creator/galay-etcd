@@ -11,24 +11,24 @@ function(galay_etcd_add_test_target target_name source_name)
     add_test(NAME ${target_name} COMMAND $<TARGET_FILE:${target_name}>)
 endfunction()
 
-galay_etcd_add_test_target(T1-EtcdSmoke T1-etcd_smoke.cc)
-galay_etcd_add_test_target(T2-EtcdPrefixOps T2-etcd_prefix_ops.cc)
-galay_etcd_add_test_target(T3-EtcdPipeline T3-etcd_pipeline.cc)
-galay_etcd_add_test_target(T4-AsyncEtcdSmoke T4-async_etcd_smoke.cc)
-galay_etcd_add_test_target(T5-AsyncEtcdPipeline T5-async_etcd_pipeline.cc)
+galay_etcd_add_test_target(T1-EtcdSmoke t1_smoke.cc)
+galay_etcd_add_test_target(T2-EtcdPrefixOps t2_prefix.cc)
+galay_etcd_add_test_target(T3-EtcdPipeline t3_pipe.cc)
+galay_etcd_add_test_target(T4-AsyncEtcdSmoke t4_smoke.cc)
+galay_etcd_add_test_target(T5-AsyncEtcdPipeline t5_pipe.cc)
 
-add_executable(T6-EtcdInternalHelpers T6-etcd_internal_helpers.cc)
+add_executable(T6-EtcdInternalHelpers t6_helpers.cc)
 target_link_libraries(T6-EtcdInternalHelpers PRIVATE galay-etcd)
 target_link_libraries(T6-EtcdInternalHelpers PRIVATE PkgConfig::SIMDJSON)
 set_property(TARGET T6-EtcdInternalHelpers PROPERTY NO_SYSTEM_FROM_IMPORTED ON)
 galay_etcd_apply_cxx(T6-EtcdInternalHelpers)
 add_test(NAME T6-EtcdInternalHelpers COMMAND $<TARGET_FILE:T6-EtcdInternalHelpers>)
 
-galay_etcd_add_test_target(T7-EtcdAwaitableSurface T7-etcd_awaitable_surface.cc)
+galay_etcd_add_test_target(T7-EtcdAwaitableSurface t7_await.cc)
 
 add_executable(T8-AsyncBenchmarkSmoke
-    T8-async_benchmark_smoke.cc
-    ../benchmark/AsyncBenchmarkSupport.cc
+    t8_bench.cc
+    ../benchmark/bench_support.cc
 )
 target_link_libraries(T8-AsyncBenchmarkSmoke PRIVATE galay-etcd)
 set_property(TARGET T8-AsyncBenchmarkSmoke PROPERTY NO_SYSTEM_FROM_IMPORTED ON)

@@ -1,12 +1,12 @@
 /**
- * @file T7-etcd_awaitable_surface.cc
+ * @file t7_await.cc
  * @brief 用途：锁定 AsyncEtcdClient 公开 header 不再泄露旧 awaitable 辅助类型。
  * 关键覆盖点：`ConnectIoAwaitable` / `CloseIoAwaitable` / `HttpPostAwaitable` /
  * `IoAwaitableBase` / `JsonOpAwaitableBase` 不再作为公开 surface 暴露。
  * 通过条件：目标成功编译，静态断言成立，程序返回 0。
  */
 
-#include "galay-etcd/async/AsyncEtcdClient.h"
+#include "galay-etcd/async/etcd_client.h"
 
 using galay::etcd::AsyncEtcdClient;
 

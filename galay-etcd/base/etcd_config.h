@@ -1,7 +1,7 @@
 #ifndef GALAY_ETCD_CONFIG_H
 #define GALAY_ETCD_CONFIG_H
 
-#include "galay-etcd/base/EtcdNetworkConfig.h"
+#include "galay-etcd/base/network_cfg.h"
 
 #include <string>
 

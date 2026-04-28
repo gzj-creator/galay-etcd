@@ -1,4 +1,4 @@
-#include "EtcdError.h"
+#include "etcd_error.h"
 
 #include <array>
 

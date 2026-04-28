@@ -1,6 +1,6 @@
-find_package(galay-kernel 3.4.4 CONFIG REQUIRED)
-find_package(galay-utils 1.0.3 CONFIG REQUIRED)
-find_package(galay-http 2.1.0 CONFIG REQUIRED)
+find_package(galay-kernel 4.0.0 CONFIG REQUIRED)
+find_package(galay-utils 2.0.0 CONFIG REQUIRED)
+find_package(galay-http 3.0.0 CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SIMDJSON REQUIRED IMPORTED_TARGET simdjson)
@@ -55,7 +55,7 @@ if(GALAY_ETCD_IMPORT_COMPILATION_ENABLED AND CMAKE_VERSION VERSION_GREATER_EQUAL
     target_sources(galay-etcd-modules
         PUBLIC
             FILE_SET CXX_MODULES
-            FILES ${CMAKE_CURRENT_SOURCE_DIR}/module/galay.etcd.cppm
+            FILES ${CMAKE_CURRENT_SOURCE_DIR}/module/galay_etcd.cppm
     )
     if(GALAY_ETCD_IMPORT_COMPILE_OPTIONS)
         target_compile_options(galay-etcd-modules PUBLIC ${GALAY_ETCD_IMPORT_COMPILE_OPTIONS})
@@ -89,7 +89,7 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
     PATTERN "*.h"
     PATTERN "*.hpp"
     PATTERN "*.inl"
-    PATTERN "base/EtcdInternal.h" EXCLUDE
+    PATTERN "base/etcd_internal.h" EXCLUDE
     PATTERN "build" EXCLUDE
     PATTERN "CMakeFiles" EXCLUDE
     PATTERN "*.cc" EXCLUDE

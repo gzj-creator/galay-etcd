@@ -6,24 +6,24 @@
 
 当前安装包会安装这些头文件：
 
-- `galay-etcd/base/EtcdNetworkConfig.h`
-- `galay-etcd/base/EtcdConfig.h`
-- `galay-etcd/base/EtcdError.h`
-- `galay-etcd/base/EtcdLog.h`
-- `galay-etcd/base/EtcdValue.h`
-- `galay-etcd/base/EtcdTypes.h`
-- `galay-etcd/async/AsyncEtcdConfig.h`
-- `galay-etcd/async/AsyncEtcdClient.h`
-- `galay-etcd/module/ModulePrelude.hpp`
-- `galay-etcd/module/galay.etcd.cppm`
-- `galay-etcd/sync/EtcdClient.h`
+- `galay-etcd/base/network_cfg.h`
+- `galay-etcd/base/etcd_config.h`
+- `galay-etcd/base/etcd_error.h`
+- `galay-etcd/base/etcd_log.h`
+- `galay-etcd/base/etcd_value.h`
+- `galay-etcd/base/etcd_types.h`
+- `galay-etcd/async/client_cfg.h`
+- `galay-etcd/async/etcd_client.h`
+- `galay-etcd/module/module_prelude.hpp`
+- `galay-etcd/module/galay_etcd.cppm`
+- `galay-etcd/sync/etcd_client.h`
 
 安装面补充说明：
 
-- `galay-etcd/base/EtcdInternal.h` 是源码树内部 helper 头，不属于安装/export 契约
-- `galay-etcd/base/EtcdLog.h` 是可选日志辅助接口，提供 `EtcdLog` / `EtcdLoggerPtr`
-- `galay-etcd/module/ModulePrelude.hpp` 是 `galay-etcd/module/galay.etcd.cppm` 的 global module fragment 支撑头，不是 header 模式下的首选入口
-- `galay-etcd/module/galay.etcd.cppm` 是真实模块接口文件；它回答 module 模式下的公开导出边界
+- `galay-etcd/base/etcd_internal.h` 是源码树内部 helper 头，不属于安装/export 契约
+- `galay-etcd/base/etcd_log.h` 是可选日志辅助接口，提供 `EtcdLog` / `EtcdLoggerPtr`
+- `galay-etcd/module/module_prelude.hpp` 是 `galay-etcd/module/galay_etcd.cppm` 的 global module fragment 支撑头，不是 header 模式下的首选入口
+- `galay-etcd/module/galay_etcd.cppm` 是真实模块接口文件；它回答 module 模式下的公开导出边界
 
 构建接口：
 
@@ -33,11 +33,11 @@
 - 安装后 `find_package` 名称：`galay-etcd`
 - C++ module：`galay.etcd`
 
-`galay.etcd` 的 module 导出边界，以 `galay-etcd/module/galay.etcd.cppm` 中的 `export { ... }` 块为准：
+`galay.etcd` 的 module 导出边界，以 `galay-etcd/module/galay_etcd.cppm` 中的 `export { ... }` 块为准：
 
-- 会被 `import galay.etcd;` 直接导出的头：`EtcdConfig.h`、`EtcdError.h`、`EtcdValue.h`、`EtcdTypes.h`、`EtcdNetworkConfig.h`、`AsyncEtcdConfig.h`、`AsyncEtcdClient.h`、`EtcdClient.h`
-- 不在当前 module 导出边界内的安装头：`EtcdLog.h`
-- `ModulePrelude.hpp` 虽然在 global module fragment 中 `#include` 了更多头，但它不是额外的导出清单
+- 会被 `import galay.etcd;` 直接导出的头：`etcd_config.h`、`etcd_error.h`、`etcd_value.h`、`etcd_types.h`、`network_cfg.h`、`client_cfg.h`、`etcd_client.h`、`etcd_client.h`
+- 不在当前 module 导出边界内的安装头：`etcd_log.h`
+- `module_prelude.hpp` 虽然在 global module fragment 中 `#include` 了更多头，但它不是额外的导出清单
 
 因此，如果你需要日志 helper，当前应继续直接 `#include` 对应头文件，而不是只依赖 `import galay.etcd;`。`galay::etcd::internal` helper 仅供源码树内部（例如 `test/T6`）使用。
 
@@ -172,7 +172,7 @@ public:
 using EtcdLoggerPtr = std::shared_ptr<spdlog::logger>;
 ```
 
-`EtcdLoggerPtr` 是 `spdlog::logger` 的共享指针别名；它只在 `galay-etcd/base/EtcdLog.h` 中声明，当前不属于 `galay.etcd` module 的直接导出内容。
+`EtcdLoggerPtr` 是 `spdlog::logger` 的共享指针别名；它只在 `galay-etcd/base/etcd_log.h` 中声明，当前不属于 `galay.etcd` module 的直接导出内容。
 
 ### `EtcdLog`
 
@@ -206,11 +206,11 @@ public:
 使用边界：
 
 - 这是**独立的可选 helper**；当前 `EtcdClient` / `AsyncEtcdClient` 的公开实现不会自动从这个单例中取 logger
-- 如果你选择 module 方式接入主 API，日志 helper 仍需直接 `#include "galay-etcd/base/EtcdLog.h"`
+- 如果你选择 module 方式接入主 API，日志 helper 仍需直接 `#include "galay-etcd/base/etcd_log.h"`
 
 ## 3. 同步客户端
 
-`galay-etcd/sync/EtcdClient.h` 中的结果类型：
+`galay-etcd/sync/etcd_client.h` 中的结果类型：
 
 ```cpp
 using EtcdVoidResult = std::expected<void, EtcdError>;
@@ -296,7 +296,7 @@ public:
 
 ## 4. 异步客户端
 
-`galay-etcd/async/AsyncEtcdClient.h` 中公开了这些结果类型：
+`galay-etcd/async/etcd_client.h` 中公开了这些结果类型：
 
 ```cpp
 using EtcdVoidResult = std::expected<void, EtcdError>;
@@ -493,7 +493,7 @@ public:
 
 ## 5. `galay::etcd::internal` source-tree helper surface
 
-`galay-etcd/base/EtcdInternal.h` 是源码树内部 helper 集合（`galay::etcd::internal`），用于库实现与仓内测试。
+`galay-etcd/base/etcd_internal.h` 是源码树内部 helper 集合（`galay::etcd::internal`），用于库实现与仓内测试。
 
 使用边界：
 
@@ -650,11 +650,11 @@ std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineTxnRespon
 
 ## 8. 交叉验证入口
 
-- 同步基础示例：`examples/include/E1-sync_basic.cc`
-- 异步基础示例：`examples/include/E2-async_basic.cc`
+- 同步基础示例：`examples/include/e1_basic.cc`
+- 异步基础示例：`examples/include/e2_basic.cc`
 - 测试入口统一位于 `test/`，用于交叉验证同步、异步、prefix 与 pipeline 语义
-- 同步 smoke：`test/T1-etcd_smoke.cc`
-- prefix / range 语义：`test/T2-etcd_prefix_ops.cc`
-- pipeline 语义：`test/T3-etcd_pipeline.cc`、`test/T5-async_etcd_pipeline.cc`
-- 异步 smoke：`test/T4-async_etcd_smoke.cc`
-- 内部 helper / parser 交叉验证：`test/T6-etcd_internal_helpers.cc`
+- 同步 smoke：`test/t1_smoke.cc`
+- prefix / range 语义：`test/t2_prefix.cc`
+- pipeline 语义：`test/t3_pipe.cc`、`test/t5_pipe.cc`
+- 异步 smoke：`test/t4_smoke.cc`
+- 内部 helper / parser 交叉验证：`test/t6_helpers.cc`

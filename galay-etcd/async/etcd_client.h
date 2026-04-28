@@ -1,16 +1,16 @@
 #ifndef GALAY_ETCD_ASYNC_ETCD_CLIENT_H
 #define GALAY_ETCD_ASYNC_ETCD_CLIENT_H
 
-#include "galay-etcd/async/AsyncEtcdConfig.h"
-#include "galay-etcd/base/EtcdError.h"
-#include "galay-etcd/base/EtcdNetworkConfig.h"
-#include "galay-etcd/base/EtcdTypes.h"
-#include "galay-etcd/base/EtcdValue.h"
+#include "galay-etcd/async/client_cfg.h"
+#include "galay-etcd/base/etcd_error.h"
+#include "galay-etcd/base/network_cfg.h"
+#include "galay-etcd/base/etcd_types.h"
+#include "galay-etcd/base/etcd_value.h"
 
-#include <galay-http/kernel/http/HttpSession.h>
-#include <galay-kernel/async/TcpSocket.h>
-#include <galay-kernel/common/Host.hpp>
-#include <galay-kernel/kernel/IOScheduler.hpp>
+#include <galay-http/kernel/http/http_session.h>
+#include <galay-kernel/async/tcp_socket.h>
+#include <galay-kernel/common/host.hpp>
+#include <galay-kernel/kernel/io_scheduler.hpp>
 
 #include <chrono>
 #include <cstdint>

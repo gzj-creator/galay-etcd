@@ -1,10 +1,10 @@
-#include "AsyncBenchmarkSupport.h"
+#include "bench_support.h"
 
-#include "galay-etcd/sync/EtcdClient.h"
-#include "galay-etcd/async/AsyncEtcdClient.h"
+#include "galay-etcd/sync/etcd_client.h"
+#include "galay-etcd/async/etcd_client.h"
 
-#include <galay-kernel/common/Sleep.hpp>
-#include <galay-kernel/kernel/Runtime.h>
+#include <galay-kernel/common/sleep.hpp>
+#include <galay-kernel/kernel/runtime.h>
 
 #include <algorithm>
 #include <atomic>

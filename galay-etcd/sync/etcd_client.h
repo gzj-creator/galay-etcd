@@ -1,11 +1,11 @@
 #ifndef GALAY_ETCD_SYNC_CLIENT_H
 #define GALAY_ETCD_SYNC_CLIENT_H
 
-#include "galay-etcd/base/EtcdConfig.h"
-#include "galay-etcd/base/EtcdError.h"
-#include "galay-etcd/base/EtcdNetworkConfig.h"
-#include "galay-etcd/base/EtcdTypes.h"
-#include "galay-etcd/base/EtcdValue.h"
+#include "galay-etcd/base/etcd_config.h"
+#include "galay-etcd/base/etcd_error.h"
+#include "galay-etcd/base/network_cfg.h"
+#include "galay-etcd/base/etcd_types.h"
+#include "galay-etcd/base/etcd_value.h"
 
 #include <chrono>
 #include <cstdint>

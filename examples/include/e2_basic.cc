@@ -1,6 +1,6 @@
-#include "galay-etcd/async/AsyncEtcdClient.h"
+#include "galay-etcd/async/etcd_client.h"
 
-#include <galay-kernel/kernel/Runtime.h>
+#include <galay-kernel/kernel/runtime.h>
 
 #include <atomic>
 #include <chrono>

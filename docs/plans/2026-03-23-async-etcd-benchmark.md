@@ -13,9 +13,9 @@
 ### Task 1: 写异步 benchmark smoke test
 
 **Files:**
-- Create: `test/T8-async_benchmark_smoke.cc`
+- Create: `test/t8_bench.cc`
 - Modify: `test/CMakeLists.txt`
-- Test: `test/T8-async_benchmark_smoke.cc`
+- Test: `test/t8_bench.cc`
 
 **Step 1: Write the failing test**
 
@@ -52,11 +52,11 @@ Expected: PASS
 ### Task 2: 实现 `B2-AsyncEtcdKvBenchmark`
 
 **Files:**
-- Create: `benchmark/AsyncBenchmarkSupport.h`
-- Create: `benchmark/AsyncBenchmarkSupport.cc`
-- Create: `benchmark/B2-async_etcd_kv_benchmark.cc`
+- Create: `benchmark/bench_support.h`
+- Create: `benchmark/bench_support.cc`
+- Create: `benchmark/b2_kv.cc`
 - Modify: `benchmark/CMakeLists.txt`
-- Test: `benchmark/B2-async_etcd_kv_benchmark.cc`
+- Test: `benchmark/b2_kv.cc`
 
 **Step 1: Write the failing test**
 

@@ -1,11 +1,11 @@
 #ifndef GALAY_ETCD_INTERNAL_H
 #define GALAY_ETCD_INTERNAL_H
 
-#include "galay-etcd/base/EtcdError.h"
-#include "galay-etcd/base/EtcdTypes.h"
-#include "galay-etcd/base/EtcdValue.h"
+#include "galay-etcd/base/etcd_error.h"
+#include "galay-etcd/base/etcd_types.h"
+#include "galay-etcd/base/etcd_value.h"
 
-#include <galay-utils/algorithm/Base64.hpp>
+#include <galay-utils/algorithm/base64.hpp>
 #include <simdjson.h>
 
 #include <algorithm>
