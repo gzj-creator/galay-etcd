@@ -1,9 +1,18 @@
 # CHANGELOG
 
 维护说明：
-- 未打 tag 的改动先写入 `
+- 未打 tag 的改动先写入 `## [Unreleased]`，发版时再归档为带版本号的节。
+- 版本号遵循语义化规则：大改动升 major、新功能升 minor、修复/文档/维护升 patch。
+- 推荐标题格式：`## [vX.Y.Z] - YYYY-MM-DD`，按时间倒序维护。
+- 建议按 `Added` / `Changed` / `Fixed` / `Docs` / `Chore` 等小节归纳关键变化。
 
 ## [Unreleased]
+
+## [v3.0.1] - 2026-04-29
+
+### Docs
+- 新增仓库级 `AGENTS.md` 约束文档，统一目录职责、构建产物边界、命名规范、接口约束与发版前验证清单。
+- 明确 CMake/Bazel 双构建同步维护、`CHANGELOG.md` / `docs/release_note.md` / Tag 版本一致性与性能基准产出要求。
 
 ## [v3.0.0] - 2026-04-29
 

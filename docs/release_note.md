@@ -69,3 +69,13 @@
   - 将同步与异步 etcd client 的公开契约统一改为“直接返回结构化结果”，移除对 `last*()` 最近结果缓存的外部依赖，并同步更新示例、测试和 benchmark 调用方式。
   - 为 `AsyncEtcdClient` 新增单 key watch 能力，提供 `watch(key, task_handler)` 与 `watch(key, function_handler)` 两个重载，并补齐 watch 事件模型与 JSON 构造/解析逻辑。
   - 新增 `T9-AsyncEtcdTaskWatch` 功能测试，配合已有 smoke/pipeline/benchmark 回归一起验证新结果契约与 watch 路径。
+
+## v3.0.1 - 2026-04-29
+
+- 版本级别：小版本（patch）
+- Git 提交消息：`docs: 新增仓库级开发与发版约束文档`
+- Git Tag：`v3.0.1`
+- 自述摘要：
+  - 新增仓库级 `AGENTS.md` 约束文档，统一目录职责、构建产物边界、命名风格、接口设计与注释要求。
+  - 补充测试、benchmark 与发版前检查清单，明确 CMake/Bazel 双构建同步维护要求。
+  - 明确 `CHANGELOG.md`、`docs/release_note.md` 与 Git Tag 的版本一致性和回验要求。
