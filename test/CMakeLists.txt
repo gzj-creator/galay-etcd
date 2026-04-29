@@ -34,3 +34,5 @@ target_link_libraries(T8-AsyncBenchmarkSmoke PRIVATE galay-etcd)
 set_property(TARGET T8-AsyncBenchmarkSmoke PROPERTY NO_SYSTEM_FROM_IMPORTED ON)
 galay_etcd_apply_cxx(T8-AsyncBenchmarkSmoke)
 add_test(NAME T8-AsyncBenchmarkSmoke COMMAND $<TARGET_FILE:T8-AsyncBenchmarkSmoke>)
+
+galay_etcd_add_test_target(T9-AsyncEtcdTaskWatch t9_task_watch.cc)

@@ -56,25 +56,25 @@ int main(int argc, char** argv)
     if (!range.has_value()) {
         return fail("prefix get failed: " + range.error().message());
     }
-    if (session.lastKeyValues().size() < kvs.size()) {
+    if (range.value().size() < kvs.size()) {
         return fail("prefix get size mismatch");
     }
-    std::cout << "[OK] prefix get count=" << session.lastKeyValues().size() << '\n';
+    std::cout << "[OK] prefix get count=" << range.value().size() << '\n';
 
     auto deleted = session.del(prefix, true);
     if (!deleted.has_value()) {
         return fail("prefix delete failed: " + deleted.error().message());
     }
-    if (session.lastDeletedCount() < static_cast<int64_t>(kvs.size())) {
+    if (deleted.value() < static_cast<int64_t>(kvs.size())) {
         return fail("prefix delete count mismatch");
     }
-    std::cout << "[OK] prefix delete count=" << session.lastDeletedCount() << '\n';
+    std::cout << "[OK] prefix delete count=" << deleted.value() << '\n';
 
     auto range_after = session.get(prefix, true);
     if (!range_after.has_value()) {
         return fail("prefix get after delete failed: " + range_after.error().message());
     }
-    if (!session.lastKeyValues().empty()) {
+    if (!range_after.value().empty()) {
         return fail("prefix keys should be empty after delete");
     }
 

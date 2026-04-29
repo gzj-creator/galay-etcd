@@ -74,7 +74,7 @@ Task<void> runPipelineCase(IOScheduler* scheduler,
         co_return;
     }
 
-    const auto& results = client.lastPipelineResults();
+    const auto& results = pipeline.value();
     if (results.size() != 3) {
         finish(fail("pipeline result size mismatch"));
         co_return;
@@ -97,7 +97,7 @@ Task<void> runPipelineCase(IOScheduler* scheduler,
         finish(fail("verify k1 failed: " + verify_k1.error().message()));
         co_return;
     }
-    if (!client.lastKeyValues().empty()) {
+    if (!verify_k1.value().empty()) {
         finish(fail("k1 should be deleted by pipeline"));
         co_return;
     }
@@ -107,7 +107,7 @@ Task<void> runPipelineCase(IOScheduler* scheduler,
         finish(fail("verify k2 failed: " + verify_k2.error().message()));
         co_return;
     }
-    if (client.lastKeyValues().empty() || client.lastKeyValues().front().value != v2) {
+    if (verify_k2.value().empty() || verify_k2.value().front().value != v2) {
         finish(fail("k2 should be written by pipeline"));
         co_return;
     }

@@ -19,8 +19,6 @@
 namespace galay::etcd
 {
 
-using EtcdVoidResult = std::expected<void, EtcdError>;
-
 class EtcdClient;
 
 class EtcdClientBuilder
@@ -88,42 +86,34 @@ public:
     EtcdClient(EtcdClient&&) = delete;
     EtcdClient& operator=(EtcdClient&&) = delete;
 
-    EtcdVoidResult connect();
-    EtcdVoidResult close();
+    EtcdBoolResult connect();
+    EtcdBoolResult close();
 
-    EtcdVoidResult put(const std::string& key,
+    EtcdBoolResult put(const std::string& key,
                        const std::string& value,
                        std::optional<int64_t> lease_id = std::nullopt);
 
-    EtcdVoidResult get(const std::string& key,
-                       bool prefix = false,
-                       std::optional<int64_t> limit = std::nullopt);
+    EtcdGetResult get(const std::string& key,
+                      bool prefix = false,
+                      std::optional<int64_t> limit = std::nullopt);
 
-    EtcdVoidResult del(const std::string& key, bool prefix = false);
-    EtcdVoidResult grantLease(int64_t ttl_seconds);
-    EtcdVoidResult keepAliveOnce(int64_t lease_id);
-    EtcdVoidResult pipeline(std::span<const PipelineOp> operations);
-    EtcdVoidResult pipeline(std::vector<PipelineOp> operations);
+    EtcdDeleteResult del(const std::string& key, bool prefix = false);
+    EtcdLeaseGrantResult grantLease(int64_t ttl_seconds);
+    EtcdLeaseGrantResult keepAliveOnce(int64_t lease_id);
+    EtcdPipelineResult pipeline(std::span<const PipelineOp> operations);
+    EtcdPipelineResult pipeline(std::vector<PipelineOp> operations);
 
     [[nodiscard]] bool connected() const;
-    [[nodiscard]] EtcdError lastError() const;
-    [[nodiscard]] bool lastBool() const;
-    [[nodiscard]] int64_t lastLeaseId() const;
-    [[nodiscard]] int64_t lastDeletedCount() const;
-    [[nodiscard]] const std::vector<EtcdKeyValue>& lastKeyValues() const;
-    [[nodiscard]] const std::vector<PipelineItemResult>& lastPipelineResults() const;
-    [[nodiscard]] int lastStatusCode() const;
-    [[nodiscard]] const std::string& lastResponseBody() const;
 
 private:
     void resetLastOperation();
     void setError(EtcdErrorType type, const std::string& message);
     void setError(EtcdError error);
-    [[nodiscard]] EtcdVoidResult currentResult() const;
     EtcdVoidResult applySocketTimeout(std::optional<std::chrono::milliseconds> timeout);
-    EtcdVoidResult postJsonInternal(const std::string& api_path,
-                                    std::string body,
-                                    std::optional<std::chrono::milliseconds> force_timeout = std::nullopt);
+    std::expected<std::string, EtcdError> postJsonInternal(
+        const std::string& api_path,
+        std::string body,
+        std::optional<std::chrono::milliseconds> force_timeout = std::nullopt);
 
 private:
     EtcdConfig m_config;
@@ -146,13 +136,6 @@ private:
     std::vector<char> m_recv_buffer;
 
     EtcdError m_last_error;
-    bool m_last_bool = false;
-    int64_t m_last_lease_id = 0;
-    int64_t m_last_deleted_count = 0;
-    int m_last_status_code = 0;
-    std::string m_last_response_body;
-    std::vector<EtcdKeyValue> m_last_kvs;
-    std::vector<PipelineItemResult> m_last_pipeline_results;
 };
 
 } // namespace galay::etcd

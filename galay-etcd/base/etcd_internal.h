@@ -269,27 +269,22 @@ inline std::expected<std::vector<EtcdKeyValue>, EtcdError> parseKvsFromObject(
     std::vector<EtcdKeyValue> kvs;
     kvs.reserve(kvs_array.size());
 
-    for (auto kv_element : kvs_array) {
-        auto kv_object_result = kv_element.get_object();
-        if (kv_object_result.error()) {
-            return std::unexpected(makeJsonParseError(context + ".kv item as object", kv_object_result.error()));
-        }
-
-        const auto kv_object = kv_object_result.value_unsafe();
+    auto parseKvObject = [](const simdjson::dom::object& kv_object,
+                            const std::string& kv_context) -> std::expected<EtcdKeyValue, EtcdError> {
         const auto encoded_key = findStringField(kv_object, "key");
         if (!encoded_key.has_value()) {
-            return std::unexpected(EtcdError(EtcdErrorType::Parse, context + ": missing key in kv item"));
+            return std::unexpected(EtcdError(EtcdErrorType::Parse, kv_context + ": missing key in kv item"));
         }
 
         const auto decoded_key = decodeBase64(encoded_key.value());
         if (!decoded_key.has_value()) {
-            return std::unexpected(EtcdError(EtcdErrorType::Parse, context + ": failed to decode base64 key"));
+            return std::unexpected(EtcdError(EtcdErrorType::Parse, kv_context + ": failed to decode base64 key"));
         }
 
         const auto encoded_value = findStringField(kv_object, "value").value_or("");
         const auto decoded_value = decodeBase64(encoded_value);
         if (!decoded_value.has_value()) {
-            return std::unexpected(EtcdError(EtcdErrorType::Parse, context + ": failed to decode base64 value"));
+            return std::unexpected(EtcdError(EtcdErrorType::Parse, kv_context + ": failed to decode base64 value"));
         }
 
         EtcdKeyValue item;
@@ -299,10 +294,53 @@ inline std::expected<std::vector<EtcdKeyValue>, EtcdError> parseKvsFromObject(
         item.mod_revision = findIntField(kv_object, "mod_revision").value_or(0);
         item.version = findIntField(kv_object, "version").value_or(0);
         item.lease = findIntField(kv_object, "lease").value_or(0);
-        kvs.push_back(std::move(item));
+        return item;
+    };
+
+    for (auto kv_element : kvs_array) {
+        auto kv_object_result = kv_element.get_object();
+        if (kv_object_result.error()) {
+            return std::unexpected(makeJsonParseError(context + ".kv item as object", kv_object_result.error()));
+        }
+
+        auto parsed_kv = parseKvObject(kv_object_result.value_unsafe(), context);
+        if (!parsed_kv.has_value()) {
+            return std::unexpected(parsed_kv.error());
+        }
+        kvs.push_back(std::move(parsed_kv.value()));
     }
 
     return kvs;
+}
+
+inline std::expected<EtcdKeyValue, EtcdError> parseKvObject(
+    const simdjson::dom::object& kv_object,
+    const std::string& context)
+{
+    const auto encoded_key = findStringField(kv_object, "key");
+    if (!encoded_key.has_value()) {
+        return std::unexpected(EtcdError(EtcdErrorType::Parse, context + ": missing key in kv item"));
+    }
+
+    const auto decoded_key = decodeBase64(encoded_key.value());
+    if (!decoded_key.has_value()) {
+        return std::unexpected(EtcdError(EtcdErrorType::Parse, context + ": failed to decode base64 key"));
+    }
+
+    const auto encoded_value = findStringField(kv_object, "value").value_or("");
+    const auto decoded_value = decodeBase64(encoded_value);
+    if (!decoded_value.has_value()) {
+        return std::unexpected(EtcdError(EtcdErrorType::Parse, context + ": failed to decode base64 value"));
+    }
+
+    EtcdKeyValue item;
+    item.key = decoded_key.value();
+    item.value = decoded_value.value();
+    item.create_revision = findIntField(kv_object, "create_revision").value_or(0);
+    item.mod_revision = findIntField(kv_object, "mod_revision").value_or(0);
+    item.version = findIntField(kv_object, "version").value_or(0);
+    item.lease = findIntField(kv_object, "lease").value_or(0);
+    return item;
 }
 
 inline bool maybeContainsEtcdErrorFields(const std::string& body)
@@ -420,6 +458,15 @@ inline std::expected<std::string, EtcdError> buildLeaseKeepAliveRequestBody(int6
         return std::unexpected(EtcdError(EtcdErrorType::InvalidParam, "lease id must be positive"));
     }
     return std::string("{\"ID\":\"") + std::to_string(lease_id) + "\"}";
+}
+
+inline std::expected<std::string, EtcdError> buildWatchRequestBody(std::string_view key)
+{
+    if (key.empty()) {
+        return std::unexpected(EtcdError(EtcdErrorType::InvalidParam, "key must not be empty"));
+    }
+
+    return std::string("{\"create_request\":{\"key\":\"") + encodeBase64(key) + "\"}}";
 }
 
 inline std::expected<std::string, EtcdError> buildTxnBody(std::span<const PipelineOp> operations)
@@ -707,6 +754,110 @@ inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineTx
         return std::unexpected(root.error());
     }
     return parsePipelineResponses(root.value(), operations);
+}
+
+inline std::expected<EtcdWatchResponse, EtcdError> parseWatchResponse(const std::string& body)
+{
+    EtcdError parse_error(EtcdErrorType::Success);
+    auto root = parseJsonObject(body, threadLocalJsonParser(), &parse_error, "parse watch response");
+    if (!root.has_value()) {
+        return std::unexpected(std::move(parse_error));
+    }
+
+    auto result_field = root.value()["result"];
+    if (result_field.error()) {
+        return std::unexpected(EtcdError(EtcdErrorType::Parse, "watch response missing result"));
+    }
+
+    auto result_object_result = result_field.value_unsafe().get_object();
+    if (result_object_result.error()) {
+        return std::unexpected(makeJsonParseError("parse watch result as object", result_object_result.error()));
+    }
+
+    const auto result_object = result_object_result.value_unsafe();
+
+    EtcdWatchResponse response;
+    response.watch_id = findIntField(result_object, "watch_id").value_or(0);
+    response.compact_revision = findIntField(result_object, "compact_revision").value_or(0);
+
+    if (auto created_field = result_object["created"]; !created_field.error()) {
+        auto created_result = created_field.value_unsafe().get_bool();
+        if (!created_result.error()) {
+            response.created = created_result.value_unsafe();
+        }
+    }
+
+    if (auto canceled_field = result_object["canceled"]; !canceled_field.error()) {
+        auto canceled_result = canceled_field.value_unsafe().get_bool();
+        if (!canceled_result.error()) {
+            response.canceled = canceled_result.value_unsafe();
+        }
+    }
+
+    auto events_field = result_object["events"];
+    if (events_field.error()) {
+        return response;
+    }
+
+    auto events_array_result = events_field.value_unsafe().get_array();
+    if (events_array_result.error()) {
+        return std::unexpected(makeJsonParseError("parse watch events as array", events_array_result.error()));
+    }
+
+    for (auto event_element : events_array_result.value_unsafe()) {
+        auto event_object_result = event_element.get_object();
+        if (event_object_result.error()) {
+            return std::unexpected(makeJsonParseError("parse watch event as object", event_object_result.error()));
+        }
+
+        const auto event_object = event_object_result.value_unsafe();
+        EtcdWatchEvent event;
+
+        if (auto type_string = findStringField(event_object, "type"); type_string.has_value()) {
+            if (type_string.value() == "PUT") {
+                event.type = EtcdWatchEventType::Put;
+            } else if (type_string.value() == "DELETE") {
+                event.type = EtcdWatchEventType::Delete;
+            } else {
+                event.type = EtcdWatchEventType::Unknown;
+            }
+        }
+
+        auto kv_field = event_object["kv"];
+        if (!kv_field.error()) {
+            auto kv_object_result = kv_field.value_unsafe().get_object();
+            if (kv_object_result.error()) {
+                return std::unexpected(makeJsonParseError("parse watch kv as object", kv_object_result.error()));
+            }
+            auto kv_result = parseKvObject(kv_object_result.value_unsafe(), "parse watch kv");
+            if (!kv_result.has_value()) {
+                return std::unexpected(kv_result.error());
+            }
+            event.kv = std::move(kv_result.value());
+            if (event.type == EtcdWatchEventType::Unknown) {
+                event.type = event.kv.value.empty()
+                    ? EtcdWatchEventType::Delete
+                    : EtcdWatchEventType::Put;
+            }
+        }
+
+        auto prev_kv_field = event_object["prev_kv"];
+        if (!prev_kv_field.error()) {
+            auto prev_kv_object_result = prev_kv_field.value_unsafe().get_object();
+            if (prev_kv_object_result.error()) {
+                return std::unexpected(makeJsonParseError("parse watch prev_kv as object", prev_kv_object_result.error()));
+            }
+            auto prev_kv_result = parseKvObject(prev_kv_object_result.value_unsafe(), "parse watch prev_kv");
+            if (!prev_kv_result.has_value()) {
+                return std::unexpected(prev_kv_result.error());
+            }
+            event.prev_kv = std::move(prev_kv_result.value());
+        }
+
+        response.events.push_back(std::move(event));
+    }
+
+    return response;
 }
 
 } // namespace galay::etcd::internal

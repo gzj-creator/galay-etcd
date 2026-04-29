@@ -89,7 +89,7 @@ bool warmupSession(EtcdClient& session, const std::string& warmup_key, SharedSta
         rememberFirstError(state, "warmup get failed: " + warmup.error().message());
         return false;
     }
-    if (!session.lastKeyValues().empty()) {
+    if (!warmup.value().empty()) {
         rememberFirstError(state, "warmup verification failed");
         return false;
     }
@@ -162,8 +162,8 @@ void runWorker(std::string endpoint,
             if (put.has_value()) {
                 auto get = session.get(key);
                 ok = get.has_value() &&
-                    !session.lastKeyValues().empty() &&
-                    session.lastKeyValues().front().value == value;
+                    !get.value().empty() &&
+                    get.value().front().value == value;
                 if (!ok && !get.has_value()) {
                     rememberFirstError(state, get.error().message());
                 } else if (!ok) {

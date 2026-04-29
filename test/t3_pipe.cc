@@ -59,7 +59,7 @@ int main(int argc, char** argv)
         return fail("pipeline failed: " + pipeline.error().message());
     }
 
-    const auto& results = session.lastPipelineResults();
+    const auto& results = pipeline.value();
     if (results.size() != 3) {
         return fail("pipeline result size mismatch, expect=3, actual=" + std::to_string(results.size()));
     }
@@ -79,7 +79,7 @@ int main(int argc, char** argv)
     if (!verify_k1.has_value()) {
         return fail("verify k1 failed: " + verify_k1.error().message());
     }
-    if (!session.lastKeyValues().empty()) {
+    if (!verify_k1.value().empty()) {
         return fail("k1 should be deleted by pipeline");
     }
 
@@ -87,7 +87,7 @@ int main(int argc, char** argv)
     if (!verify_k2.has_value()) {
         return fail("verify k2 failed: " + verify_k2.error().message());
     }
-    if (session.lastKeyValues().empty() || session.lastKeyValues().front().value != v2) {
+    if (verify_k2.value().empty() || verify_k2.value().front().value != v2) {
         return fail("k2 should be written by pipeline");
     }
 

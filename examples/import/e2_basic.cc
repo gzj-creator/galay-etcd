@@ -55,14 +55,14 @@ Task<void> runExample(IOScheduler* scheduler,
         finish(3);
         co_return;
     }
-    if (client.lastKeyValues().empty()) {
+    if (get.value().empty()) {
         std::cerr << "get returned empty kvs\n";
         finish(4);
         co_return;
     }
 
-    std::cout << "async import example ok: " << client.lastKeyValues().front().key
-              << " => " << client.lastKeyValues().front().value << '\n';
+    std::cout << "async import example ok: " << get.value().front().key
+              << " => " << get.value().front().value << '\n';
 
     (void)co_await client.del(key);
     (void)co_await client.close();

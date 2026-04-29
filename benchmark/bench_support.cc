@@ -133,7 +133,7 @@ Task<void> runWorker(std::shared_ptr<SharedState> state,
             (void)co_await client.close();
             co_return;
         }
-        if (!client.lastKeyValues().empty()) {
+        if (!warmup_result.value().empty()) {
             rememberFirstError(state, "warmup verification failed");
             state->startup_failures.fetch_add(1, std::memory_order_release);
             (void)co_await client.close();
@@ -169,8 +169,8 @@ Task<void> runWorker(std::shared_ptr<SharedState> state,
                 if (put_result.has_value()) {
                     auto get_result = co_await client.get(key);
                     ok = get_result.has_value() &&
-                        !client.lastKeyValues().empty() &&
-                        client.lastKeyValues().front().value == value;
+                        !get_result.value().empty() &&
+                        get_result.value().front().value == value;
                     if (!ok && !get_result.has_value()) {
                         rememberFirstError(state, get_result.error().message());
                     } else if (!ok) {

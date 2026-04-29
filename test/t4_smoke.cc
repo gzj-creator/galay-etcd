@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <thread>
 
@@ -35,6 +36,10 @@ Task<void> runSmoke(IOScheduler* scheduler,
                     std::atomic<bool>* done,
                     int* exit_code)
 {
+    struct ThreadWatchState {
+        std::atomic<bool> seen{false};
+    };
+
     auto finish = [&](int code) {
         *exit_code = code;
         done->store(true, std::memory_order_release);
@@ -55,10 +60,34 @@ Task<void> runSmoke(IOScheduler* scheduler,
 
     const std::string key = "/galay-etcd/async-smoke/" + nowSuffix();
     const std::string value = "v-" + nowSuffix();
+    auto watch_state = std::make_shared<ThreadWatchState>();
+
+    auto watch_started = client.watch(
+        key,
+        [watch_state](galay::etcd::EtcdWatchResponse response) {
+            if (response.events.empty()) {
+                return;
+            }
+            watch_state->seen.store(true, std::memory_order_release);
+        });
+    if (!watch_started.has_value()) {
+        finish(fail("watch start failed: " + watch_started.error().message()));
+        co_return;
+    }
 
     auto put = co_await client.put(key, value);
     if (!put.has_value()) {
         finish(fail("put failed: " + put.error().message()));
+        co_return;
+    }
+
+    const auto watch_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (!watch_state->seen.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < watch_deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    if (!watch_state->seen.load(std::memory_order_acquire)) {
+        finish(fail("watch did not observe put"));
         co_return;
     }
 
@@ -67,7 +96,7 @@ Task<void> runSmoke(IOScheduler* scheduler,
         finish(fail("get failed: " + get.error().message()));
         co_return;
     }
-    if (client.lastKeyValues().empty() || client.lastKeyValues().front().value != value) {
+    if (get.value().empty() || get.value().front().value != value) {
         finish(fail("get value mismatch"));
         co_return;
     }
@@ -77,7 +106,7 @@ Task<void> runSmoke(IOScheduler* scheduler,
         finish(fail("delete failed: " + del.error().message()));
         co_return;
     }
-    if (client.lastDeletedCount() <= 0) {
+    if (del.value() <= 0) {
         finish(fail("delete count should be > 0"));
         co_return;
     }
@@ -87,13 +116,13 @@ Task<void> runSmoke(IOScheduler* scheduler,
         finish(fail("grant lease failed: " + lease.error().message()));
         co_return;
     }
-    if (client.lastLeaseId() <= 0) {
+    if (lease.value() <= 0) {
         finish(fail("lease id should be > 0"));
         co_return;
     }
 
     const std::string lease_key = key + "/lease";
-    auto put_lease = co_await client.put(lease_key, value, client.lastLeaseId());
+    auto put_lease = co_await client.put(lease_key, value, lease.value());
     if (!put_lease.has_value()) {
         finish(fail("put with lease failed: " + put_lease.error().message()));
         co_return;
@@ -104,7 +133,7 @@ Task<void> runSmoke(IOScheduler* scheduler,
         finish(fail("get leased key failed: " + get_lease.error().message()));
         co_return;
     }
-    if (client.lastKeyValues().empty()) {
+    if (get_lease.value().empty()) {
         finish(fail("leased key should exist immediately"));
         co_return;
     }
@@ -115,7 +144,7 @@ Task<void> runSmoke(IOScheduler* scheduler,
         finish(fail("get after ttl failed: " + get_after_ttl.error().message()));
         co_return;
     }
-    if (!client.lastKeyValues().empty()) {
+    if (!get_after_ttl.value().empty()) {
         finish(fail("leased key should expire after ttl"));
         co_return;
     }

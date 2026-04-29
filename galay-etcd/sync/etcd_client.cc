@@ -622,12 +622,12 @@ EtcdVoidResult EtcdClient::applySocketTimeout(std::optional<std::chrono::millise
     return {};
 }
 
-EtcdVoidResult EtcdClient::connect()
+EtcdBoolResult EtcdClient::connect()
 {
     resetLastOperation();
 
     if (m_connected && m_socket_fd >= 0) {
-        return {};
+        return true;
     }
 
     if (!m_endpoint_valid) {
@@ -709,7 +709,7 @@ EtcdVoidResult EtcdClient::connect()
         }
 
         (void)::freeaddrinfo(results);
-        return {};
+        return true;
     }
 
     (void)::freeaddrinfo(results);
@@ -725,7 +725,7 @@ EtcdVoidResult EtcdClient::connect()
     return std::unexpected(m_last_error);
 }
 
-EtcdVoidResult EtcdClient::close()
+EtcdBoolResult EtcdClient::close()
 {
     resetLastOperation();
 
@@ -733,7 +733,7 @@ EtcdVoidResult EtcdClient::close()
         m_connected = false;
         m_socket_timeout_cached = false;
         m_applied_socket_timeout.reset();
-        return {};
+        return true;
     }
 
     if (::close(m_socket_fd) != 0) {
@@ -750,10 +750,10 @@ EtcdVoidResult EtcdClient::close()
     m_connected = false;
     m_socket_timeout_cached = false;
     m_applied_socket_timeout.reset();
-    return {};
+    return true;
 }
 
-EtcdVoidResult EtcdClient::postJsonInternal(
+std::expected<std::string, EtcdError> EtcdClient::postJsonInternal(
     const std::string& api_path,
     std::string body,
     std::optional<std::chrono::milliseconds> force_timeout)
@@ -815,9 +815,6 @@ EtcdVoidResult EtcdClient::postJsonInternal(
         return std::unexpected(response_result.error());
     }
 
-    m_last_status_code = response_result->status_code;
-    m_last_response_body = response_result->body;
-
     if (response_result->connection_close) {
         if (m_socket_fd >= 0) {
             (void)::close(m_socket_fd);
@@ -828,19 +825,19 @@ EtcdVoidResult EtcdClient::postJsonInternal(
         m_applied_socket_timeout.reset();
     }
 
-    if (m_last_status_code < 200 || m_last_status_code >= 300) {
+    if (response_result->status_code < 200 || response_result->status_code >= 300) {
         EtcdError error(
             EtcdErrorType::Server,
-            "HTTP status=" + std::to_string(m_last_status_code) +
-                ", body=" + m_last_response_body);
+            "HTTP status=" + std::to_string(response_result->status_code) +
+                ", body=" + response_result->body);
         setError(error);
         return std::unexpected(error);
     }
 
-    return {};
+    return response_result->body;
 }
 
-EtcdVoidResult EtcdClient::put(const std::string& key,
+EtcdBoolResult EtcdClient::put(const std::string& key,
                                const std::string& value,
                                std::optional<int64_t> lease_id)
 {
@@ -851,24 +848,23 @@ EtcdVoidResult EtcdClient::put(const std::string& key,
         return std::unexpected(body.error());
     }
 
-    auto result = postJsonInternal("/kv/put", std::move(body.value()));
-    if (!result.has_value()) {
-        return result;
+    auto response_body = postJsonInternal("/kv/put", std::move(body.value()));
+    if (!response_body.has_value()) {
+        return std::unexpected(response_body.error());
     }
 
-    auto put_result = parsePutResponse(m_last_response_body);
+    auto put_result = parsePutResponse(response_body.value());
     if (!put_result.has_value()) {
         setError(put_result.error());
         return std::unexpected(put_result.error());
     }
 
-    m_last_bool = true;
-    return {};
+    return true;
 }
 
-EtcdVoidResult EtcdClient::get(const std::string& key,
-                               bool prefix,
-                               std::optional<int64_t> limit)
+EtcdGetResult EtcdClient::get(const std::string& key,
+                              bool prefix,
+                              std::optional<int64_t> limit)
 {
     resetLastOperation();
     auto body = buildGetRequestBody(key, prefix, limit);
@@ -877,24 +873,21 @@ EtcdVoidResult EtcdClient::get(const std::string& key,
         return std::unexpected(body.error());
     }
 
-    auto result = postJsonInternal("/kv/range", std::move(body.value()));
-    if (!result.has_value()) {
-        return result;
+    auto response_body = postJsonInternal("/kv/range", std::move(body.value()));
+    if (!response_body.has_value()) {
+        return std::unexpected(response_body.error());
     }
 
-    auto kvs_result = parseGetResponseKvs(m_last_response_body);
+    auto kvs_result = parseGetResponseKvs(response_body.value());
     if (!kvs_result.has_value()) {
         setError(kvs_result.error());
-        m_last_kvs.clear();
         return std::unexpected(kvs_result.error());
     }
 
-    m_last_kvs = std::move(kvs_result.value());
-    m_last_bool = !m_last_kvs.empty();
-    return {};
+    return kvs_result.value();
 }
 
-EtcdVoidResult EtcdClient::del(const std::string& key, bool prefix)
+EtcdDeleteResult EtcdClient::del(const std::string& key, bool prefix)
 {
     resetLastOperation();
     auto body = buildDeleteRequestBody(key, prefix);
@@ -903,22 +896,20 @@ EtcdVoidResult EtcdClient::del(const std::string& key, bool prefix)
         return std::unexpected(body.error());
     }
 
-    auto result = postJsonInternal("/kv/deleterange", std::move(body.value()));
-    if (!result.has_value()) {
-        return result;
+    auto response_body = postJsonInternal("/kv/deleterange", std::move(body.value()));
+    if (!response_body.has_value()) {
+        return std::unexpected(response_body.error());
     }
 
-    auto deleted_result = parseDeleteResponseDeletedCount(m_last_response_body);
+    auto deleted_result = parseDeleteResponseDeletedCount(response_body.value());
     if (!deleted_result.has_value()) {
         setError(deleted_result.error());
         return std::unexpected(deleted_result.error());
     }
-    m_last_deleted_count = deleted_result.value();
-    m_last_bool = m_last_deleted_count > 0;
-    return {};
+    return deleted_result.value();
 }
 
-EtcdVoidResult EtcdClient::grantLease(int64_t ttl_seconds)
+EtcdLeaseGrantResult EtcdClient::grantLease(int64_t ttl_seconds)
 {
     resetLastOperation();
     auto body = buildLeaseGrantRequestBody(ttl_seconds);
@@ -927,22 +918,20 @@ EtcdVoidResult EtcdClient::grantLease(int64_t ttl_seconds)
         return std::unexpected(body.error());
     }
 
-    auto result = postJsonInternal("/lease/grant", std::move(body.value()));
-    if (!result.has_value()) {
-        return result;
+    auto response_body = postJsonInternal("/lease/grant", std::move(body.value()));
+    if (!response_body.has_value()) {
+        return std::unexpected(response_body.error());
     }
 
-    auto lease_result = parseLeaseGrantResponseId(m_last_response_body);
+    auto lease_result = parseLeaseGrantResponseId(response_body.value());
     if (!lease_result.has_value()) {
         setError(lease_result.error());
         return std::unexpected(lease_result.error());
     }
-    m_last_lease_id = lease_result.value();
-    m_last_bool = true;
-    return {};
+    return lease_result.value();
 }
 
-EtcdVoidResult EtcdClient::keepAliveOnce(int64_t lease_id)
+EtcdLeaseGrantResult EtcdClient::keepAliveOnce(int64_t lease_id)
 {
     resetLastOperation();
     auto body = buildLeaseKeepAliveRequestBody(lease_id);
@@ -956,23 +945,21 @@ EtcdVoidResult EtcdClient::keepAliveOnce(int64_t lease_id)
         timeout = std::chrono::seconds(5);
     }
 
-    auto result = postJsonInternal("/lease/keepalive", std::move(body.value()), timeout);
-    if (!result.has_value()) {
-        return result;
+    auto response_body = postJsonInternal("/lease/keepalive", std::move(body.value()), timeout);
+    if (!response_body.has_value()) {
+        return std::unexpected(response_body.error());
     }
 
-    auto keepalive_result = parseLeaseKeepAliveResponseId(m_last_response_body, lease_id);
+    auto keepalive_result = parseLeaseKeepAliveResponseId(response_body.value(), lease_id);
     if (!keepalive_result.has_value()) {
         setError(keepalive_result.error());
         return std::unexpected(keepalive_result.error());
     }
 
-    m_last_lease_id = keepalive_result.value();
-    m_last_bool = true;
-    return {};
+    return keepalive_result.value();
 }
 
-EtcdVoidResult EtcdClient::pipeline(std::span<const PipelineOp> operations)
+EtcdPipelineResult EtcdClient::pipeline(std::span<const PipelineOp> operations)
 {
     resetLastOperation();
     auto body = buildTxnBody(operations);
@@ -981,24 +968,21 @@ EtcdVoidResult EtcdClient::pipeline(std::span<const PipelineOp> operations)
         return std::unexpected(body.error());
     }
 
-    auto result = postJsonInternal("/kv/txn", std::move(body.value()));
-    if (!result.has_value()) {
-        return result;
+    auto response_body = postJsonInternal("/kv/txn", std::move(body.value()));
+    if (!response_body.has_value()) {
+        return std::unexpected(response_body.error());
     }
 
-    auto pipeline_results = parsePipelineTxnResponse(m_last_response_body, operations);
+    auto pipeline_results = parsePipelineTxnResponse(response_body.value(), operations);
     if (!pipeline_results.has_value()) {
         setError(pipeline_results.error());
-        m_last_pipeline_results.clear();
         return std::unexpected(pipeline_results.error());
     }
 
-    m_last_pipeline_results = std::move(pipeline_results.value());
-    m_last_bool = true;
-    return {};
+    return pipeline_results.value();
 }
 
-EtcdVoidResult EtcdClient::pipeline(std::vector<PipelineOp> operations)
+EtcdPipelineResult EtcdClient::pipeline(std::vector<PipelineOp> operations)
 {
     return pipeline(std::span<const PipelineOp>(operations.data(), operations.size()));
 }
@@ -1008,64 +992,9 @@ bool EtcdClient::connected() const
     return m_connected && m_socket_fd >= 0;
 }
 
-EtcdError EtcdClient::lastError() const
-{
-    return m_last_error;
-}
-
-bool EtcdClient::lastBool() const
-{
-    return m_last_bool;
-}
-
-int64_t EtcdClient::lastLeaseId() const
-{
-    return m_last_lease_id;
-}
-
-int64_t EtcdClient::lastDeletedCount() const
-{
-    return m_last_deleted_count;
-}
-
-const std::vector<EtcdKeyValue>& EtcdClient::lastKeyValues() const
-{
-    return m_last_kvs;
-}
-
-const std::vector<EtcdClient::PipelineItemResult>& EtcdClient::lastPipelineResults() const
-{
-    return m_last_pipeline_results;
-}
-
-int EtcdClient::lastStatusCode() const
-{
-    return m_last_status_code;
-}
-
-const std::string& EtcdClient::lastResponseBody() const
-{
-    return m_last_response_body;
-}
-
-EtcdVoidResult EtcdClient::currentResult() const
-{
-    if (m_last_error.isOk()) {
-        return {};
-    }
-    return std::unexpected(m_last_error);
-}
-
 void EtcdClient::resetLastOperation()
 {
     m_last_error = EtcdError(EtcdErrorType::Success);
-    m_last_bool = false;
-    m_last_lease_id = 0;
-    m_last_deleted_count = 0;
-    m_last_status_code = 0;
-    m_last_response_body.clear();
-    m_last_kvs.clear();
-    m_last_pipeline_results.clear();
 }
 
 void EtcdClient::setError(EtcdErrorType type, const std::string& message)

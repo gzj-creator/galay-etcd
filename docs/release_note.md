@@ -59,3 +59,13 @@
   - 将源码、头文件、测试、示例与 benchmark 文件统一重命名为 lower_snake_case，编号前缀同步改为小写下划线形式。
   - 同步更新 CMake/Bazel 构建描述、模块入口、README/docs、脚本和所有项目内 include 路径引用。
   - 移除项目内相对 include，统一使用基于公开 include 根或模块根的非相对路径。
+
+## v3.0.0 - 2026-04-29
+
+- 版本级别：大版本（major）
+- Git 提交消息：`feat: 重构 etcd 客户端返回结果并补齐 watch 能力`
+- Git Tag：`v3.0.0`
+- 自述摘要：
+  - 将同步与异步 etcd client 的公开契约统一改为“直接返回结构化结果”，移除对 `last*()` 最近结果缓存的外部依赖，并同步更新示例、测试和 benchmark 调用方式。
+  - 为 `AsyncEtcdClient` 新增单 key watch 能力，提供 `watch(key, task_handler)` 与 `watch(key, function_handler)` 两个重载，并补齐 watch 事件模型与 JSON 构造/解析逻辑。
+  - 新增 `T9-AsyncEtcdTaskWatch` 功能测试，配合已有 smoke/pipeline/benchmark 回归一起验证新结果契约与 watch 路径。

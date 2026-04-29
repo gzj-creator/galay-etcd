@@ -34,13 +34,13 @@ int main(int argc, char** argv)
         return 3;
     }
 
-    if (client.lastKeyValues().empty()) {
+    if (get.value().empty()) {
         std::cerr << "get returned empty kvs\n";
         return 4;
     }
 
-    std::cout << "sync import example ok: " << client.lastKeyValues().front().key
-              << " => " << client.lastKeyValues().front().value << '\n';
+    std::cout << "sync import example ok: " << get.value().front().key
+              << " => " << get.value().front().value << '\n';
 
     (void)client.del(key);
     (void)client.close();

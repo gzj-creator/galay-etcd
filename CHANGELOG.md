@@ -5,6 +5,24 @@
 
 ## [Unreleased]
 
+## [v3.0.0] - 2026-04-29
+
+### Added
+- 为 `AsyncEtcdClient` 新增单 key watch 能力，提供 `watch(key, task_handler)` 与 `watch(key, function_handler)` 两个公开重载。
+- 新增 `EtcdWatchEventType`、`EtcdWatchEvent` 与 `EtcdWatchResponse`，补齐 watch 事件模型与解析辅助函数。
+- 新增 `T9-AsyncEtcdTaskWatch`，实跑覆盖 `WatchTaskHandler` 路径。
+
+### Changed
+- 将同步与异步 etcd client 的公开结果契约统一改为“直接返回结构化 `std::expected<value, EtcdError>`”，不再依赖最近一次结果缓存。
+- 调整 `EtcdClient` / `AsyncEtcdClient`、示例、测试与 benchmark 全部调用方式，统一从返回值读取 `get/del/grantLease/pipeline` 结果。
+- 更新 README 与 API/使用/高级主题文档，改写为直接返回值与 async watch 的新语义。
+
+### Removed
+- 移除公开 `lastError()`、`lastBool()`、`lastLeaseId()`、`lastDeletedCount()`、`lastKeyValues()`、`lastPipelineResults()`、`lastStatusCode()` 与 `lastResponseBody()` 访问器。
+
+### Release
+- 按大版本发布要求提升版本到 `v3.0.0`。
+
 ## [v2.0.0] - 2026-04-29
 
 ### Changed

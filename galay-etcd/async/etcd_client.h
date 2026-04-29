@@ -13,24 +13,23 @@
 #include <galay-kernel/kernel/io_scheduler.hpp>
 
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <coroutine>
 #include <expected>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
 namespace galay::etcd
 {
-
-using EtcdVoidResult = std::expected<void, EtcdError>;
-using EtcdGetResult = std::expected<std::vector<EtcdKeyValue>, EtcdError>;
-using EtcdDeleteResult = std::expected<int64_t, EtcdError>;
-using EtcdLeaseGrantResult = std::expected<int64_t, EtcdError>;
 
 class AsyncEtcdClient
 {
@@ -38,6 +37,8 @@ public:
     using PipelineOpType = galay::etcd::PipelineOpType;
     using PipelineOp = galay::etcd::PipelineOp;
     using PipelineItemResult = galay::etcd::PipelineItemResult;
+    using WatchTaskHandler = std::function<galay::kernel::Task<void>(EtcdWatchResponse)>;
+    using WatchFunctionHandler = std::function<void(EtcdWatchResponse)>;
 
 private:
     using ConnectIoAwaitable =
@@ -92,7 +93,7 @@ public:
     class ConnectAwaitable
     {
     public:
-        using Result = EtcdVoidResult;
+        using Result = EtcdBoolResult;
 
         ConnectAwaitable(AsyncEtcdClient& client);
 
@@ -162,7 +163,7 @@ public:
         {
             return awaitSuspend(handle);
         }
-        EtcdVoidResult await_resume();
+        EtcdBoolResult await_resume();
     };
 
     class PostJsonAwaitable
@@ -184,7 +185,7 @@ public:
         {
             return m_ctx->awaitable.await_suspend(handle);
         }
-        EtcdVoidResult await_resume();
+        std::expected<std::string, EtcdError> await_resume();
 
     private:
         struct Context
@@ -214,7 +215,7 @@ private:
         {
             return m_post_awaitable->await_suspend(handle);
         }
-        EtcdVoidResult resumePost();
+        std::expected<std::string, EtcdError> resumePost();
 
         AsyncEtcdClient* m_client = nullptr;
         std::optional<PostJsonAwaitable> m_post_awaitable;
@@ -240,7 +241,7 @@ public:
         {
             return awaitSuspend(handle);
         }
-        EtcdVoidResult await_resume();
+        EtcdBoolResult await_resume();
     };
 
     class GetAwaitable : private JsonOpAwaitableBase
@@ -262,7 +263,7 @@ public:
         {
             return awaitSuspend(handle);
         }
-        EtcdVoidResult await_resume();
+        EtcdGetResult await_resume();
     };
 
     class DeleteAwaitable : private JsonOpAwaitableBase
@@ -283,7 +284,7 @@ public:
         {
             return awaitSuspend(handle);
         }
-        EtcdVoidResult await_resume();
+        EtcdDeleteResult await_resume();
     };
 
     class GrantLeaseAwaitable : private JsonOpAwaitableBase
@@ -302,7 +303,7 @@ public:
         {
             return awaitSuspend(handle);
         }
-        EtcdVoidResult await_resume();
+        EtcdLeaseGrantResult await_resume();
     };
 
     class KeepAliveAwaitable : private JsonOpAwaitableBase
@@ -321,7 +322,7 @@ public:
         {
             return awaitSuspend(handle);
         }
-        EtcdVoidResult await_resume();
+        EtcdLeaseGrantResult await_resume();
 
     private:
         int64_t m_lease_id = 0;
@@ -344,7 +345,7 @@ public:
         {
             return awaitSuspend(handle);
         }
-        EtcdVoidResult await_resume();
+        EtcdPipelineResult await_resume();
 
     private:
         std::vector<PipelineOpType> m_operation_types;
@@ -352,6 +353,7 @@ public:
 
     AsyncEtcdClient(galay::kernel::IOScheduler* scheduler,
                     AsyncEtcdConfig config = {});
+    ~AsyncEtcdClient();
 
     AsyncEtcdClient(const AsyncEtcdClient&) = delete;
     AsyncEtcdClient& operator=(const AsyncEtcdClient&) = delete;
@@ -375,29 +377,41 @@ public:
     PipelineAwaitable pipeline(std::span<const PipelineOp> operations);
     PipelineAwaitable pipeline(std::vector<PipelineOp> operations);
 
+    /**
+     * @brief 为单个 key 启动异步 watch，并把每个事件批次投递给 `Task<void>` 处理器。
+     * @note handler 参数按值传递，避免协程 frame 持有悬空引用。
+     * @note watch 由后台线程维持长连接；处理器本身会被调度到 client 绑定的 `IOScheduler`。
+     */
+    EtcdBoolResult watch(const std::string& key, WatchTaskHandler handler);
+
+    /**
+     * @brief 为单个 key 启动异步 watch，并在后台 watch 线程上直接调用普通函数处理器。
+     * @note 如果需要在 `IOScheduler` 上继续协程化处理，请使用 `WatchTaskHandler` 重载。
+     */
+    EtcdBoolResult watch(const std::string& key, WatchFunctionHandler handler);
+
     [[nodiscard]] bool connected() const;
-    [[nodiscard]] EtcdError lastError() const;
-    [[nodiscard]] bool lastBool() const;
-    [[nodiscard]] int64_t lastLeaseId() const;
-    [[nodiscard]] int64_t lastDeletedCount() const;
-    [[nodiscard]] const std::vector<EtcdKeyValue>& lastKeyValues() const;
-    [[nodiscard]] const std::vector<PipelineItemResult>& lastPipelineResults() const;
-    [[nodiscard]] int lastStatusCode() const;
-    [[nodiscard]] const std::string& lastResponseBody() const;
 
 private:
+    struct WatchWorkerState;
+
     void resetLastOperation();
     void setError(EtcdErrorType type, const std::string& message);
     void setError(EtcdError error);
 
-    [[nodiscard]] EtcdVoidResult currentResult() const;
-    EtcdVoidResult resumePostOrCurrent(std::optional<PostJsonAwaitable>& post_awaitable);
+    [[nodiscard]] EtcdBoolResult currentBoolResult() const;
+    std::expected<std::string, EtcdError> resumePostOrCurrent(
+        std::optional<PostJsonAwaitable>& post_awaitable);
     [[nodiscard]] std::string buildSerializedPostRequest(std::string_view api_path,
                                                          std::string_view body) const;
 
     PostJsonAwaitable postJsonInternal(const std::string& api_path,
                                        const std::string& body,
                                        std::optional<std::chrono::milliseconds> force_timeout = std::nullopt);
+    EtcdBoolResult startWatchWorker(const std::string& key,
+                                    std::function<void(EtcdWatchResponse)> dispatch);
+    void stopWatchWorkers();
+    void joinWatchWorkers();
 
 private:
     galay::kernel::IOScheduler* m_scheduler;
@@ -417,13 +431,8 @@ private:
     bool m_connected = false;
 
     EtcdError m_last_error;
-    bool m_last_bool = false;
-    int64_t m_last_lease_id = 0;
-    int64_t m_last_deleted_count = 0;
-    int m_last_status_code = 0;
-    std::string m_last_response_body;
-    std::vector<EtcdKeyValue> m_last_kvs;
-    std::vector<PipelineItemResult> m_last_pipeline_results;
+    std::mutex m_watch_mutex;
+    std::vector<std::shared_ptr<WatchWorkerState>> m_watch_workers;
 };
 
 class AsyncEtcdClientBuilder

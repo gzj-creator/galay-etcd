@@ -249,32 +249,24 @@ public:
     EtcdClient(EtcdClient&&) = delete;
     EtcdClient& operator=(EtcdClient&&) = delete;
 
-    EtcdVoidResult connect();
-    EtcdVoidResult close();
+    EtcdBoolResult connect();
+    EtcdBoolResult close();
 
-    EtcdVoidResult put(const std::string& key,
+    EtcdBoolResult put(const std::string& key,
                        const std::string& value,
                        std::optional<int64_t> lease_id = std::nullopt);
 
-    EtcdVoidResult get(const std::string& key,
-                       bool prefix = false,
-                       std::optional<int64_t> limit = std::nullopt);
+    EtcdGetResult get(const std::string& key,
+                      bool prefix = false,
+                      std::optional<int64_t> limit = std::nullopt);
 
-    EtcdVoidResult del(const std::string& key, bool prefix = false);
-    EtcdVoidResult grantLease(int64_t ttl_seconds);
-    EtcdVoidResult keepAliveOnce(int64_t lease_id);
-    EtcdVoidResult pipeline(std::span<const PipelineOp> operations);
-    EtcdVoidResult pipeline(std::vector<PipelineOp> operations);
+    EtcdDeleteResult del(const std::string& key, bool prefix = false);
+    EtcdLeaseGrantResult grantLease(int64_t ttl_seconds);
+    EtcdLeaseGrantResult keepAliveOnce(int64_t lease_id);
+    EtcdPipelineResult pipeline(std::span<const PipelineOp> operations);
+    EtcdPipelineResult pipeline(std::vector<PipelineOp> operations);
 
     bool connected() const;
-    EtcdError lastError() const;
-    bool lastBool() const;
-    int64_t lastLeaseId() const;
-    int64_t lastDeletedCount() const;
-    const std::vector<EtcdKeyValue>& lastKeyValues() const;
-    const std::vector<PipelineItemResult>& lastPipelineResults() const;
-    int lastStatusCode() const;
-    const std::string& lastResponseBody() const;
 };
 ```
 
@@ -296,20 +288,22 @@ public:
 
 ## 4. 异步客户端
 
-`galay-etcd/async/etcd_client.h` 中公开了这些结果类型：
+`galay-etcd/base/etcd_types.h` 中公开了这些结果类型：
 
 ```cpp
 using EtcdVoidResult = std::expected<void, EtcdError>;
+using EtcdBoolResult = std::expected<bool, EtcdError>;
 using EtcdGetResult = std::expected<std::vector<EtcdKeyValue>, EtcdError>;
 using EtcdDeleteResult = std::expected<int64_t, EtcdError>;
 using EtcdLeaseGrantResult = std::expected<int64_t, EtcdError>;
+using EtcdPipelineResult = std::expected<std::vector<PipelineItemResult>, EtcdError>;
 ```
 
 结果别名补充说明：
 
-- `EtcdGetResult`、`EtcdDeleteResult`、`EtcdLeaseGrantResult` 描述的是结构化 payload 的形状
-- 当前公开 awaitable 在 `co_await` 后仍统一产出 `EtcdVoidResult`
-- 结构化结果通过 `lastKeyValues()`、`lastDeletedCount()`、`lastLeaseId()` 等最近结果访问器暴露
+- `EtcdBoolResult` 用于 `connect/close/put` 这类“成功但无复杂 payload”的操作
+- `EtcdGetResult`、`EtcdDeleteResult`、`EtcdLeaseGrantResult`、`EtcdPipelineResult` 描述的是结构化 payload 的形状
+- 同步与异步路径都直接返回这些结果值，不再依赖 `last*()` 最近结果访问器
 
 ### `AsyncEtcdClientBuilder`
 
@@ -375,16 +369,10 @@ public:
     KeepAliveAwaitable keepAliveOnce(int64_t lease_id);
     PipelineAwaitable pipeline(std::span<const PipelineOp> operations);
     PipelineAwaitable pipeline(std::vector<PipelineOp> operations);
+    EtcdBoolResult watch(const std::string& key, WatchTaskHandler handler);
+    EtcdBoolResult watch(const std::string& key, WatchFunctionHandler handler);
 
     bool connected() const;
-    EtcdError lastError() const;
-    bool lastBool() const;
-    int64_t lastLeaseId() const;
-    int64_t lastDeletedCount() const;
-    const std::vector<EtcdKeyValue>& lastKeyValues() const;
-    const std::vector<PipelineItemResult>& lastPipelineResults() const;
-    int lastStatusCode() const;
-    const std::string& lastResponseBody() const;
 };
 ```
 
@@ -396,9 +384,8 @@ public:
 
 公开 nested base 的定位：
 
-- `IoAwaitableBase<AwaitableType>` 是 `ConnectAwaitable` / `CloseAwaitable` 的共享基类
-- `JsonOpAwaitableBase` 是 `Put/Get/Delete/GrantLease/KeepAlive/Pipeline` 的共享基类
-- 它们都在 public 区域中声明，但常规调用入口仍是各个具体 awaitable
+- `IoAwaitableBase<AwaitableType>` 与 `JsonOpAwaitableBase` 只服务于 awaitable 复用
+- 它们不是常规调用入口，调用侧应通过 `connect()/put()/get()/.../watch()` 进入
 
 ### `PostJsonAwaitable`
 
@@ -426,10 +413,10 @@ public:
 
 - 这是一个**公开但偏底层**的 HTTP JSON POST awaitable；`AsyncEtcdClient` 的具体业务 awaitable 都通过它发起请求
 - `api_path` 会与 client 当前的 `api_prefix` 拼接，形成最终请求路径
-- 如果 client 尚未连接，构造函数会把 `lastError()` 设为 `NotConnected`，并让 awaitable 立即就绪
+- 如果 client 尚未连接，构造函数会生成 `NotConnected` 错误并让 awaitable 立即就绪
 - `force_timeout` 有值时优先使用它；否则在启用了 `request_timeout` 时沿用配置超时
 - `await_suspend()` 直接转发到底层 `HttpSessionAwaitable`
-- `await_resume()` 会映射 HTTP / kernel 错误到 `EtcdError`，并在收到完整响应后写入 `lastStatusCode()` / `lastResponseBody()`
+- `await_resume()` 会映射 HTTP / kernel 错误到 `EtcdError`，并在成功时直接返回响应体解析后的结构化结果
 - HTTP 状态码不在 `2xx` 区间时，`await_resume()` 直接返回 `EtcdErrorType::Server`
 
 ### 公开 awaitable 的 `await_*` 语义
@@ -440,7 +427,7 @@ public:
 - `await_ready()`：当 `IOScheduler*` 为空、endpoint 无效、或 client 已经连上并持有 socket / session 时立即返回 `true`
 - `await_suspend()`：把协程挂到 `TcpSocket::connect(...)`
 - `await_resume()`：
-  - 若前面没有真正启动 I/O，则直接回放当前 `EtcdVoidResult`
+  - 若前面没有真正启动 I/O，则直接回放当前 `EtcdBoolResult`
   - I/O 成功后创建 `HttpSession`、置 `connected() = true`
   - I/O 失败或建 `HttpSession` 失败时，返回映射后的 `EtcdError`
 
@@ -457,38 +444,38 @@ public:
 
 它们共享同一套 await 行为框架：
 
-- 构造函数都会先清空最近结果缓存，再调用 request builder 生成 JSON body
-- 如果参数校验或 request body 生成失败，构造阶段就会设置 `lastError()`，并让 awaitable 立即就绪
+- 构造函数都会先重置当前错误状态，再调用 request builder 生成 JSON body
+- 如果参数校验或 request body 生成失败，构造阶段就会生成错误并让 awaitable 立即就绪
 - `await_ready()` / `await_suspend()` 统一委托给内部 `PostJsonAwaitable`
-- `await_resume()` 都会先完成 HTTP POST，再做各自的响应解析与 `last*()` 缓存回填
+- `await_resume()` 都会先完成 HTTP POST，再做各自的响应解析并直接返回结果值
 
 各个具体 awaitable 的差异如下：
 
 - `PutAwaitable`
   - 路径：`/kv/put`
   - 解析：`parsePutResponse(...)`
-  - 成功副作用：`lastBool() == true`
+  - 成功返回：`EtcdBoolResult{true}`
 - `GetAwaitable`
   - 路径：`/kv/range`
   - 解析：`parseGetResponseKvs(...)`
-  - 成功副作用：写入 `lastKeyValues()`，并把 `lastBool()` 设为“结果是否非空”
+  - 成功返回：`EtcdGetResult`
 - `DeleteAwaitable`
   - 路径：`/kv/deleterange`
   - 解析：`parseDeleteResponseDeletedCount(...)`
-  - 成功副作用：写入 `lastDeletedCount()`，并把 `lastBool()` 设为“删除数是否大于 0”
+  - 成功返回：`EtcdDeleteResult`
 - `GrantLeaseAwaitable`
   - 路径：`/lease/grant`
   - 解析：`parseLeaseGrantResponseId(...)`
-  - 成功副作用：写入 `lastLeaseId()`，并把 `lastBool()` 设为 `true`
+  - 成功返回：`EtcdLeaseGrantResult`
 - `KeepAliveAwaitable`
   - 路径：`/lease/keepalive`
   - 解析：`parseLeaseKeepAliveResponseId(..., expected_lease_id)`
-  - 成功副作用：写入 `lastLeaseId()`，并把 `lastBool()` 设为 `true`
+  - 成功返回：`EtcdLeaseGrantResult`
   - 超时补充：当 `request_timeout` 没有启用时，这个 awaitable 会对本次请求强制使用 5 秒超时
 - `PipelineAwaitable`
   - 路径：`/kv/txn`
   - 解析：`parsePipelineTxnResponse(...)`
-  - 成功副作用：写入 `lastPipelineResults()`，并把 `lastBool()` 设为 `true`
+  - 成功返回：`EtcdPipelineResult`
   - 额外状态：构造时会捕获一份 `PipelineOpType` 列表，用于在响应阶段按操作顺序解释每一项 txn 返回
 
 ## 5. `galay::etcd::internal` source-tree helper surface
@@ -608,44 +595,36 @@ std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineTxnRespon
   - `responses` 数组是否存在，且长度是否与操作数一致
   - 每一项是否含有与操作类型匹配的 `response_put` / `response_range` / `response_delete_range`
 
-## 6. 结果访问器的使用规则
+## 6. 结果值的使用规则
 
-最近结果访问器的共同规则：
+当前公开 API 不再暴露 `last*()` 最近结果访问器。
 
-- 每次 `connect/close/put/get/del/grantLease/keepAliveOnce/pipeline` 开始前，客户端都会清空上一轮 `last*()` 状态
-- 它们表示“最近一次操作”的状态，不是历史日志
-- 成功后再读取，例如 `put()` 成功后读 `lastBool()`
-- `get()` / `pipeline()` 成功后再读 `lastKeyValues()` / `lastPipelineResults()`
-- `grantLease()` / `keepAliveOnce()` 成功后再读 `lastLeaseId()`
-- `del()` 成功后再读 `lastDeletedCount()`
+统一规则是：
 
-`lastBool()` 的当前语义：
-
-- `put()` / `grantLease()` / `keepAliveOnce()` / `pipeline()` 成功后置为 `true`
-- `get()` 成功后表示“最近一次查询结果是否非空”
-- `del()` 成功后表示“最近一次删除数是否大于 0”
+- `connect()` / `close()` / `put()` 成功后返回 `EtcdBoolResult{true}`
+- `get()` / `pipeline()` 成功后直接从 `value()` 读取结构化结果
+- `grantLease()` / `keepAliveOnce()` 成功后直接从 `value()` 读取租约 ID
+- `del()` 成功后直接从 `value()` 读取删除数
 
 ## 7. 调用顺序、返回与失败语义
 
 两条客户端路径都遵循同一套业务语义：
 
 - 在第一次 `put/get/del/grantLease/keepAliveOnce/pipeline` 之前先完成 `connect()`
-- 同步路径直接返回 `EtcdVoidResult`
-- 异步路径的公开 awaitable 在 `co_await` 后同样产出 `EtcdVoidResult`
-- 需要结构化结果时，不是从 `EtcdVoidResult` 里直接取，而是从最近一次成功操作对应的 `last*()` 访问器读取
+- 同步路径直接返回结构化 `std::expected<value, EtcdError>`
+- 异步路径的公开 awaitable 在 `co_await` 后返回同语义的结构化结果
+- 调用侧应直接消费返回值，而不是再回头读 client 状态缓存
 
 失败语义：
 
 - 参数、endpoint、网络、HTTP、解析、服务端错误都统一落到 `EtcdError`
-- `lastStatusCode()` / `lastResponseBody()` 适合定位 HTTP / gRPC-JSON 网关层问题
 - `keepalive` 只控制传输层连接保持，不自动替代 etcd 租约续约
 - 异步请求类 awaitable 如果在构造阶段就发现参数错误 / 未连接 / endpoint 无效，可能根本不会挂起协程，而是直接在 `await_ready()` / `await_resume()` 路径返回错误
 
 生命周期与共享边界：
 
-- `EtcdClient` / `AsyncEtcdClient` 都是**有内部最近结果缓存的状态型对象**
-- 如果多个线程 / 协程 / 调用方共享同一个客户端实例，后续请求会覆盖前一次 `last*()` 结果
-- 需要稳定审计单次调用结果时，应在操作成功后立即复制 `lastKeyValues()` / `lastPipelineResults()` / `lastResponseBody()`
+- `EtcdClient` / `AsyncEtcdClient` 都是状态型对象，但公开结果已改为“直接返回值”
+- 仍不建议多个线程 / 协程 / 调用方共享同一个客户端实例
 - `AsyncEtcdClient` 不能早于其未完成的 awaitable 销毁，因为这些 awaitable 内部保存的是原始 client 指针
 
 ## 8. 交叉验证入口

@@ -24,12 +24,13 @@
 - 前缀操作：`get(key, true)` / `del(key, true)`
 - 租约：`grantLease(ttl_seconds)` / `keepAliveOnce(lease_id)`
 - Pipeline：单次 `POST /v3/kv/txn`，请求体固定为 `compare=[]`、`success=[ops]`、`failure=[]`
-- 最近一次结果访问器：`lastKeyValues()`、`lastLeaseId()`、`lastDeletedCount()`、`lastPipelineResults()`
+- Watch：`AsyncEtcdClient::watch(key, task_handler)` / `watch(key, function_handler)`
+- 结果语义：同步与异步接口都直接返回结构化 `std::expected<value, EtcdError>`
 
 ## 当前未实现或不建议误读的能力
 
 - `https://` endpoint 语法可被解析，但同步/异步客户端都会拒绝 TLS 连接
-- 认证、Watch、官方 Lock API、Cluster / Member 管理接口当前都没有公开 API
+- 认证、官方 Lock API、Cluster / Member 管理接口当前都没有公开 API
 - Pipeline 不是 compare/failure 事务 DSL；当前只暴露“空 compare + success ops”批量请求
 - `config.keepalive` 是传输层 keep-alive，不等于租约续约；租约续约必须显式调用 `keepAliveOnce()`
 - 客户端实例未声明为线程安全；并发场景请使用“每线程 / 每协程一个客户端”或外部串行化

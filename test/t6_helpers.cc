@@ -6,12 +6,14 @@
 
 using galay::etcd::PipelineOp;
 using galay::etcd::PipelineOpType;
+using galay::etcd::EtcdWatchEventType;
 using galay::etcd::internal::buildDeleteRequestBody;
 using galay::etcd::internal::buildGetRequestBody;
 using galay::etcd::internal::buildLeaseGrantRequestBody;
 using galay::etcd::internal::buildLeaseKeepAliveRequestBody;
 using galay::etcd::internal::buildPutRequestBody;
 using galay::etcd::internal::buildTxnBody;
+using galay::etcd::internal::buildWatchRequestBody;
 using galay::etcd::internal::encodeBase64;
 using galay::etcd::internal::parseDeleteResponseDeletedCount;
 using galay::etcd::internal::parseEtcdSuccessObject;
@@ -21,6 +23,7 @@ using galay::etcd::internal::parseLeaseKeepAliveResponseId;
 using galay::etcd::internal::parsePipelineTxnResponse;
 using galay::etcd::internal::parsePipelineResponses;
 using galay::etcd::internal::parsePutResponse;
+using galay::etcd::internal::parseWatchResponse;
 
 namespace
 {
@@ -77,6 +80,12 @@ int main()
     auto keepalive_body = buildLeaseKeepAliveRequestBody(321);
     if (!keepalive_body.has_value() || !contains(*keepalive_body, "\"ID\":\"321\"")) {
         return fail("buildLeaseKeepAliveRequestBody failed");
+    }
+
+    auto watch_body = buildWatchRequestBody(key);
+    if (!watch_body.has_value() || !contains(*watch_body, "\"create_request\"") ||
+        !contains(*watch_body, "\"key\":\"" + encodeBase64(key) + "\"")) {
+        return fail("buildWatchRequestBody failed");
     }
 
     std::vector<PipelineOp> ops;
@@ -165,6 +174,23 @@ int main()
         std::span<const PipelineOpType>(op_types.data(), op_types.size()));
     if (!txn_parsed.has_value() || txn_parsed->size() != 3) {
         return fail("parsePipelineTxnResponse mismatch");
+    }
+
+    const std::string watch_value = "watch-value";
+    auto watch_response = parseWatchResponse(
+        std::string("{\"result\":{\"watch_id\":\"7\",\"created\":true,\"events\":[{\"type\":\"PUT\",\"kv\":{\"key\":\"")
+        + encodeBase64(key) + "\",\"value\":\"" + encodeBase64(watch_value) + "\"}}]}}");
+    if (!watch_response.has_value()) {
+        return fail("parseWatchResponse failed: " + watch_response.error().message());
+    }
+    if (watch_response->watch_id != 7 || !watch_response->created) {
+        return fail("parseWatchResponse metadata mismatch");
+    }
+    if (watch_response->events.size() != 1 ||
+        watch_response->events.front().type != EtcdWatchEventType::Put ||
+        watch_response->events.front().kv.key != key ||
+        watch_response->events.front().kv.value != watch_value) {
+        return fail("parseWatchResponse event mismatch");
     }
 
     std::cout << "ETCD INTERNAL HELPERS TEST PASSED\n";
