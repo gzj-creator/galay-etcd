@@ -79,3 +79,11 @@
   - 新增仓库级 `AGENTS.md` 约束文档，统一目录职责、构建产物边界、命名风格、接口设计与注释要求。
   - 补充测试、benchmark 与发版前检查清单，明确 CMake/Bazel 双构建同步维护要求。
   - 明确 `CHANGELOG.md`、`docs/release_note.md` 与 Git Tag 的版本一致性和回验要求。
+
+## v3.0.2 - 2026-05-12
+
+- 版本级别：小版本（patch）
+- Git 提交消息：`chore: 移除 benchmark compare 目录`
+- Git Tag：`v3.0.2`
+- 自述摘要：
+  - 移除 `benchmark/compare` 目录并收紧忽略规则，避免误提交对比基准测试代码与构建产物。
