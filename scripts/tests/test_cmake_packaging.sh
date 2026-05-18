@@ -121,7 +121,7 @@ cmake -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" -P "$INSTALL_SCRIPT" >/dev/null
     || fail "missing installed config file"
 [ -f "$INSTALL_PREFIX/lib/cmake/galay-etcd/galay-etcd-config-version.cmake" ] \
     || fail "missing installed config-version file"
-[ -f "$INSTALL_PREFIX/lib/cmake/galay-etcd/galay-etcd-targets.cmake" ] \
+[ -f "$INSTALL_PREFIX/lib/cmake/galay-etcd/galayEtcdConfigTargets.cmake" ] \
     || fail "missing installed targets file"
 
 write_file "$CONSUMER/CMakeLists.txt" <<'EOF'

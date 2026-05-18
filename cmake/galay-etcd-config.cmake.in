@@ -7,6 +7,6 @@ find_dependency(galay-utils 2.0.0 REQUIRED CONFIG)
 find_dependency(galay-http 3.0.0 REQUIRED CONFIG)
 find_dependency(spdlog CONFIG)
 
-include("${CMAKE_CURRENT_LIST_DIR}/galay-etcd-targets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/galayEtcdConfigTargets.cmake")
 
 check_required_components(galay-etcd)

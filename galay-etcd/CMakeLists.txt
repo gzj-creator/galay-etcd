@@ -108,7 +108,7 @@ endif()
 set(GALAY_ETCD_CMAKE_PACKAGE_DIR "lib/cmake/galay-etcd")
 
 install(EXPORT galay-etcd-targets
-    FILE galay-etcd-targets.cmake
+    FILE galayEtcdConfigTargets.cmake
     NAMESPACE galay-etcd::
     DESTINATION ${GALAY_ETCD_CMAKE_PACKAGE_DIR}
 )

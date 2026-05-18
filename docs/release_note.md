@@ -87,3 +87,13 @@
 - Git Tag：`v3.0.2`
 - 自述摘要：
   - 移除 `benchmark/compare` 目录并收紧忽略规则，避免误提交对比基准测试代码与构建产物。
+
+## v3.0.3 - 2026-05-18
+
+- 版本级别：小版本（patch）
+- Git 提交消息：`chore: 统一 CMake 导出文件命名`
+- Git Tag：`v3.0.3`
+- 自述摘要：
+  - 将安装导出的 CMake targets 文件改为 `galayEtcdConfigTargets.cmake`，并同步 `galay-etcd-config.cmake` 的 include 路径。
+  - Release 安装随主 targets 文件生成 `galayEtcdConfigTargets-release.cmake`，统一驼峰导出文件命名。
+  - 将 CMake project 版本提升到 `3.0.3`，确保源码版本元数据、tag 与发布记录一致。

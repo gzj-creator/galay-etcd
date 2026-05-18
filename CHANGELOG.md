@@ -8,6 +8,14 @@
 
 ## [Unreleased]
 
+## [v3.0.3] - 2026-05-18
+
+### Changed
+- 将安装导出的 CMake targets 文件改为 `galayEtcdConfigTargets.cmake`，同步 package config 的 include 路径。
+- Release 安装现在生成 `galayEtcdConfigTargets-release.cmake`，与新的驼峰导出文件命名保持一致。
+- 将 CMake project 版本提升到 `3.0.3`，对齐本次发布 tag。
+
+
 ## [v3.0.2] - 2026-05-12
 
 ### Chore
