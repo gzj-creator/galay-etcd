@@ -8,6 +8,18 @@
 
 ## [Unreleased]
 
+## [v3.1.0] - 2026-05-20
+
+### Added
+- 新增 `galay::etcd::log::set/get` 库级日志入口，使用 `galay-kernel` 的 `BaseLogger` 与独立 logger 槽位。
+- 新增 `ETCD_LOG_*` 埋点宏，并在同步/异步 etcd client 的连接、请求、响应错误和 watch worker 生命周期路径补充日志。
+- 新增 `T10-EtcdLog` 回归测试，验证未设置 logger 和级别过滤时不会求值日志格式化参数。
+
+### Changed
+- 移除旧 spdlog 日志 helper 依赖，文档改为描述 BaseLogger 注入方式。
+- 将 `galay-http` 依赖提升到 `3.1.0`，继续对齐 `galay-kernel 5.0.0`。
+- 将 CMake project/package 版本提升到 `3.1.0`。
+
 ## [v3.0.3] - 2026-05-18
 
 ### Changed

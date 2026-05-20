@@ -1,7 +1,6 @@
-find_package(galay-kernel 4.0.0 CONFIG REQUIRED)
+find_package(galay-kernel 5.0.0 CONFIG REQUIRED)
 find_package(galay-utils 2.0.0 CONFIG REQUIRED)
-find_package(galay-http 3.0.0 CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
+find_package(galay-http 3.1.0 CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SIMDJSON REQUIRED IMPORTED_TARGET simdjson)
 
@@ -30,7 +29,6 @@ target_link_libraries(${PROJECT_NAME}
     PUBLIC galay-kernel::galay-kernel
     PUBLIC galay::galay-utils
     PUBLIC galay-http::galay-http
-    PUBLIC spdlog::spdlog
     PUBLIC pthread
     PRIVATE PkgConfig::SIMDJSON
 )

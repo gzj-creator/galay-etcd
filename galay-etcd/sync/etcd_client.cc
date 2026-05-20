@@ -1,6 +1,7 @@
 #include "etcd_client.h"
 
 #include "galay-etcd/base/etcd_internal.h"
+#include "galay-etcd/base/etcd_log.h"
 
 #include <algorithm>
 #include <array>
@@ -568,11 +569,15 @@ EtcdClient::EtcdClient(EtcdConfig config)
     auto endpoint_result = parseEndpoint(m_config.endpoint);
     if (!endpoint_result.has_value()) {
         m_endpoint_error = endpoint_result.error();
+        ETCD_LOG_WARN("[sync] [init]", "invalid endpoint endpoint={} error={}",
+                      m_config.endpoint,
+                      m_endpoint_error);
         return;
     }
 
     if (endpoint_result->secure) {
         m_endpoint_error = "https endpoint is not supported in EtcdClient: " + m_config.endpoint;
+        ETCD_LOG_WARN("[sync] [init]", "unsupported https endpoint={}", m_config.endpoint);
         return;
     }
 
@@ -635,8 +640,16 @@ EtcdBoolResult EtcdClient::connect()
             ? "invalid endpoint"
             : m_endpoint_error;
         setError(EtcdErrorType::InvalidEndpoint, message);
+        ETCD_LOG_ERROR("[sync] [connect]", "invalid endpoint endpoint={} error={}",
+                       m_config.endpoint,
+                       m_last_error.message());
         return std::unexpected(m_last_error);
     }
+
+    ETCD_LOG_INFO("[sync] [connect]", "connecting endpoint={} host={} port={}",
+                  m_config.endpoint,
+                  m_endpoint_host,
+                  m_endpoint_port);
 
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -648,6 +661,10 @@ EtcdBoolResult EtcdClient::connect()
     const int gai_rc = ::getaddrinfo(m_endpoint_host.c_str(), port_string.c_str(), &hints, &results);
     if (gai_rc != 0) {
         setError(EtcdErrorType::Connection, std::string("getaddrinfo failed: ") + gai_strerror(gai_rc));
+        ETCD_LOG_ERROR("[sync] [connect]", "getaddrinfo failed host={} port={} error={}",
+                       m_endpoint_host,
+                       m_endpoint_port,
+                       m_last_error.message());
         return std::unexpected(m_last_error);
     }
 
@@ -699,6 +716,9 @@ EtcdBoolResult EtcdClient::connect()
                 : std::nullopt);
         if (!timeout_result.has_value()) {
             setError(timeout_result.error());
+            ETCD_LOG_ERROR("[sync] [connect]", "apply socket timeout failed endpoint={} error={}",
+                           m_config.endpoint,
+                           m_last_error.message());
             (void)::close(m_socket_fd);
             m_socket_fd = -1;
             m_connected = false;
@@ -709,6 +729,10 @@ EtcdBoolResult EtcdClient::connect()
         }
 
         (void)::freeaddrinfo(results);
+        ETCD_LOG_INFO("[sync] [connect]", "connected endpoint={} host={} port={}",
+                      m_config.endpoint,
+                      m_endpoint_host,
+                      m_endpoint_port);
         return true;
     }
 
@@ -722,6 +746,9 @@ EtcdBoolResult EtcdClient::connect()
     m_socket_fd = -1;
     m_socket_timeout_cached = false;
     m_applied_socket_timeout.reset();
+    ETCD_LOG_ERROR("[sync] [connect]", "connect failed endpoint={} error={}",
+                   m_config.endpoint,
+                   m_last_error.message());
     return std::unexpected(m_last_error);
 }
 
@@ -739,6 +766,9 @@ EtcdBoolResult EtcdClient::close()
     if (::close(m_socket_fd) != 0) {
         const EtcdError error = makeErrnoError(EtcdErrorType::Connection, "close failed", errno);
         setError(error);
+        ETCD_LOG_ERROR("[sync] [close]", "close failed endpoint={} error={}",
+                       m_config.endpoint,
+                       error.message());
         m_socket_fd = -1;
         m_connected = false;
         m_socket_timeout_cached = false;
@@ -750,6 +780,7 @@ EtcdBoolResult EtcdClient::close()
     m_connected = false;
     m_socket_timeout_cached = false;
     m_applied_socket_timeout.reset();
+    ETCD_LOG_INFO("[sync] [close]", "closed endpoint={}", m_config.endpoint);
     return true;
 }
 
@@ -761,6 +792,9 @@ std::expected<std::string, EtcdError> EtcdClient::postJsonInternal(
     if (!m_connected || m_socket_fd < 0) {
         EtcdError error(EtcdErrorType::NotConnected, "etcd client is not connected");
         setError(error);
+        ETCD_LOG_WARN("[sync] [request]", "request rejected path={} error={}",
+                      api_path,
+                      error.message());
         return std::unexpected(error);
     }
 
@@ -774,6 +808,9 @@ std::expected<std::string, EtcdError> EtcdClient::postJsonInternal(
     auto timeout_result = applySocketTimeout(timeout);
     if (!timeout_result.has_value()) {
         setError(timeout_result.error());
+        ETCD_LOG_ERROR("[sync] [request]", "apply socket timeout failed path={} error={}",
+                       api_path,
+                       timeout_result.error().message());
         return std::unexpected(timeout_result.error());
     }
 
@@ -788,6 +825,9 @@ std::expected<std::string, EtcdError> EtcdClient::postJsonInternal(
     auto send_result = sendAll(m_socket_fd, m_request_buffer);
     if (!send_result.has_value()) {
         setError(send_result.error());
+        ETCD_LOG_ERROR("[sync] [request]", "send failed path={} error={}",
+                       api_path,
+                       send_result.error().message());
         if (m_socket_fd >= 0) {
             (void)::close(m_socket_fd);
             m_socket_fd = -1;
@@ -805,6 +845,9 @@ std::expected<std::string, EtcdError> EtcdClient::postJsonInternal(
         m_recv_buffer);
     if (!response_result.has_value()) {
         setError(response_result.error());
+        ETCD_LOG_ERROR("[sync] [request]", "recv failed path={} error={}",
+                       api_path,
+                       response_result.error().message());
         if (m_socket_fd >= 0) {
             (void)::close(m_socket_fd);
             m_socket_fd = -1;
@@ -816,6 +859,9 @@ std::expected<std::string, EtcdError> EtcdClient::postJsonInternal(
     }
 
     if (response_result->connection_close) {
+        ETCD_LOG_DEBUG("[sync] [request]", "server closed connection path={} status={}",
+                       api_path,
+                       response_result->status_code);
         if (m_socket_fd >= 0) {
             (void)::close(m_socket_fd);
             m_socket_fd = -1;
@@ -831,8 +877,17 @@ std::expected<std::string, EtcdError> EtcdClient::postJsonInternal(
             "HTTP status=" + std::to_string(response_result->status_code) +
                 ", body=" + response_result->body);
         setError(error);
+        ETCD_LOG_WARN("[sync] [request]", "unexpected http status path={} status={} body_size={}",
+                      api_path,
+                      response_result->status_code,
+                      response_result->body.size());
         return std::unexpected(error);
     }
+
+    ETCD_LOG_DEBUG("[sync] [request]", "request completed path={} status={} body_size={}",
+                   api_path,
+                   response_result->status_code,
+                   response_result->body.size());
 
     return response_result->body;
 }

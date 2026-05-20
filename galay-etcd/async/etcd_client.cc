@@ -1,6 +1,7 @@
 #include "etcd_client.h"
 
 #include "galay-etcd/base/etcd_internal.h"
+#include "galay-etcd/base/etcd_log.h"
 
 #include <galay-http/protoc/http/http_error.h>
 
@@ -503,11 +504,15 @@ AsyncEtcdClient::AsyncEtcdClient(galay::kernel::IOScheduler* scheduler,
     auto endpoint_result = parseEndpoint(m_config.endpoint);
     if (!endpoint_result.has_value()) {
         m_endpoint_error = endpoint_result.error();
+        ETCD_LOG_WARN("[async] [init]", "invalid endpoint endpoint={} error={}",
+                      m_config.endpoint,
+                      m_endpoint_error);
         return;
     }
 
     if (endpoint_result->secure) {
         m_endpoint_error = "https endpoint is not supported in AsyncEtcdClient: " + m_config.endpoint;
+        ETCD_LOG_WARN("[async] [init]", "unsupported https endpoint={}", m_config.endpoint);
         return;
     }
 
@@ -567,6 +572,7 @@ bool AsyncEtcdClient::PostJsonAwaitable::await_ready() const noexcept
 std::expected<std::string, EtcdError> AsyncEtcdClient::PostJsonAwaitable::await_resume()
 {
     if (!m_ctx.has_value()) {
+        ETCD_LOG_WARN("[async] [request]", "request rejected error=etcd client is not connected");
         return std::unexpected(EtcdError(EtcdErrorType::NotConnected, "etcd client is not connected"));
     }
 
@@ -574,12 +580,17 @@ std::expected<std::string, EtcdError> AsyncEtcdClient::PostJsonAwaitable::await_
     if (!response_result.has_value()) {
         const auto mapped = mapHttpError(response_result.error());
         m_ctx->owner->setError(mapped);
+        ETCD_LOG_ERROR("[async] [request]", "http request failed endpoint={} error={}",
+                       m_ctx->owner->m_config.endpoint,
+                       mapped.message());
         return std::unexpected(mapped);
     }
 
     if (!response_result->has_value()) {
         EtcdError error(EtcdErrorType::Internal, "http response incomplete");
         m_ctx->owner->setError(error);
+        ETCD_LOG_ERROR("[async] [request]", "http response incomplete endpoint={}",
+                       m_ctx->owner->m_config.endpoint);
         return std::unexpected(error);
     }
 
@@ -593,8 +604,17 @@ std::expected<std::string, EtcdError> AsyncEtcdClient::PostJsonAwaitable::await_
             "HTTP status=" + std::to_string(status_code) +
             ", body=" + response_body);
         m_ctx->owner->setError(error);
+        ETCD_LOG_WARN("[async] [request]", "unexpected http status endpoint={} status={} body_size={}",
+                      m_ctx->owner->m_config.endpoint,
+                      status_code,
+                      response_body.size());
         return std::unexpected(error);
     }
+
+    ETCD_LOG_DEBUG("[async] [request]", "request completed endpoint={} status={} body_size={}",
+                   m_ctx->owner->m_config.endpoint,
+                   status_code,
+                   response_body.size());
 
     return response_body;
 }
@@ -666,11 +686,15 @@ AsyncEtcdClient::ConnectAwaitable::SharedState::SharedState(AsyncEtcdClient& own
     if (client->m_scheduler == nullptr) {
         EtcdError error(EtcdErrorType::Internal, "IOScheduler is null");
         client->setError(error);
+        ETCD_LOG_ERROR("[async] [connect]", "scheduler is null endpoint={}",
+                       client->m_config.endpoint);
         result = std::unexpected(error);
         return;
     }
 
     if (client->m_connected && client->m_socket != nullptr && client->m_http_session != nullptr) {
+        ETCD_LOG_DEBUG("[async] [connect]", "already connected endpoint={}",
+                       client->m_config.endpoint);
         result = true;
         return;
     }
@@ -681,6 +705,9 @@ AsyncEtcdClient::ConnectAwaitable::SharedState::SharedState(AsyncEtcdClient& own
             : client->m_endpoint_error;
         EtcdError error(EtcdErrorType::InvalidEndpoint, message);
         client->setError(error);
+        ETCD_LOG_ERROR("[async] [connect]", "invalid endpoint endpoint={} error={}",
+                       client->m_config.endpoint,
+                       error.message());
         result = std::unexpected(error);
         return;
     }
@@ -691,6 +718,9 @@ AsyncEtcdClient::ConnectAwaitable::SharedState::SharedState(AsyncEtcdClient& own
         if (!nonblock_result.has_value()) {
             EtcdError error = mapKernelIoError(nonblock_result.error(), EtcdErrorType::Connection);
             client->setError(error);
+            ETCD_LOG_ERROR("[async] [connect]", "set nonblocking failed endpoint={} error={}",
+                           client->m_config.endpoint,
+                           error.message());
             client->m_socket.reset();
             client->m_connected = false;
             result = std::unexpected(error);
@@ -699,9 +729,14 @@ AsyncEtcdClient::ConnectAwaitable::SharedState::SharedState(AsyncEtcdClient& own
 
         host = client->m_server_host.value();
         phase = Phase::Connect;
+        ETCD_LOG_INFO("[async] [connect]", "connecting endpoint={}",
+                      client->m_config.endpoint);
     } catch (const std::exception& ex) {
         EtcdError error(EtcdErrorType::Connection, ex.what());
         client->setError(error);
+        ETCD_LOG_ERROR("[async] [connect]", "prepare connect failed endpoint={} error={}",
+                       client->m_config.endpoint,
+                       error.message());
         client->m_http_session.reset();
         client->m_socket.reset();
         client->m_connected = false;
@@ -735,6 +770,9 @@ void AsyncEtcdClient::ConnectAwaitable::Machine::onConnect(
     if (!result.has_value()) {
         EtcdError error = mapKernelIoError(result.error());
         m_state->client->setError(error);
+        ETCD_LOG_ERROR("[async] [connect]", "connect failed endpoint={} error={}",
+                       m_state->client->m_config.endpoint,
+                       error.message());
         m_state->client->m_http_session.reset();
         m_state->client->m_socket.reset();
         m_state->client->m_connected = false;
@@ -749,10 +787,15 @@ void AsyncEtcdClient::ConnectAwaitable::Machine::onConnect(
             m_state->client->m_network_config.buffer_size);
         m_state->client->m_connected = true;
         m_state->result = true;
+        ETCD_LOG_INFO("[async] [connect]", "connected endpoint={}",
+                      m_state->client->m_config.endpoint);
     } catch (const std::exception& ex) {
         EtcdError error(EtcdErrorType::Internal,
                         std::string("create http session failed: ") + ex.what());
         m_state->client->setError(error);
+        ETCD_LOG_ERROR("[async] [connect]", "create http session failed endpoint={} error={}",
+                       m_state->client->m_config.endpoint,
+                       error.message());
         m_state->client->m_http_session.reset();
         m_state->client->m_socket.reset();
         m_state->client->m_connected = false;
@@ -820,6 +863,9 @@ EtcdBoolResult AsyncEtcdClient::CloseAwaitable::await_resume()
         if (!close_result.has_value()) {
             EtcdError error = mapKernelIoError(close_result.error());
             m_client->setError(error);
+            ETCD_LOG_ERROR("[async] [close]", "close failed endpoint={} error={}",
+                           m_client->m_config.endpoint,
+                           error.message());
             result = std::unexpected(error);
         }
     } else {
@@ -830,6 +876,7 @@ EtcdBoolResult AsyncEtcdClient::CloseAwaitable::await_resume()
     m_client->m_http_session.reset();
     m_client->m_socket.reset();
     m_client->m_connected = false;
+    ETCD_LOG_INFO("[async] [close]", "closed endpoint={}", m_client->m_config.endpoint);
     return result;
 }
 
@@ -1109,6 +1156,7 @@ EtcdBoolResult AsyncEtcdClient::watch(const std::string& key, WatchTaskHandler h
     if (m_scheduler == nullptr) {
         EtcdError error(EtcdErrorType::Internal, "IOScheduler is null");
         setError(error);
+        ETCD_LOG_ERROR("[async] [watch]", "scheduler is null key={}", key);
         return std::unexpected(error);
     }
 
@@ -1148,6 +1196,7 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
     if (!dispatch) {
         EtcdError error(EtcdErrorType::InvalidParam, "watch handler must not be empty");
         setError(error);
+        ETCD_LOG_WARN("[async] [watch]", "watch handler is empty key={}", key);
         return std::unexpected(error);
     }
 
@@ -1155,6 +1204,10 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
     if (!endpoint_result.has_value()) {
         EtcdError error(EtcdErrorType::InvalidEndpoint, endpoint_result.error());
         setError(error);
+        ETCD_LOG_ERROR("[async] [watch]", "invalid endpoint endpoint={} key={} error={}",
+                       m_config.endpoint,
+                       key,
+                       error.message());
         return std::unexpected(error);
     }
     if (endpoint_result->secure) {
@@ -1162,12 +1215,18 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
             EtcdErrorType::InvalidEndpoint,
             "https endpoint is not supported in AsyncEtcdClient watch: " + m_config.endpoint);
         setError(error);
+        ETCD_LOG_WARN("[async] [watch]", "unsupported https endpoint={} key={}",
+                      m_config.endpoint,
+                      key);
         return std::unexpected(error);
     }
 
     auto request_body = buildWatchRequestBody(key);
     if (!request_body.has_value()) {
         setError(request_body.error());
+        ETCD_LOG_WARN("[async] [watch]", "build watch request failed key={} error={}",
+                      key,
+                      request_body.error().message());
         return std::unexpected(request_body.error());
     }
 
@@ -1176,9 +1235,14 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
     const uint16_t port = endpoint_result->port;
     const std::string request = buildSerializedPostRequest("/watch", request_body.value());
     const auto network_config = m_network_config;
+    const std::string watch_key = key;
 
     worker->thread = std::thread(
-        [worker, host, port, request, network_config, dispatch = std::move(dispatch)]() mutable {
+        [worker, host, port, request, network_config, watch_key, dispatch = std::move(dispatch)]() mutable {
+            ETCD_LOG_INFO("[async] [watch]", "worker started key={} host={} port={}",
+                          watch_key,
+                          host,
+                          port);
             addrinfo hints{};
             hints.ai_family = AF_UNSPEC;
             hints.ai_socktype = SOCK_STREAM;
@@ -1188,6 +1252,11 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
             const std::string port_string = std::to_string(port);
             const int gai_rc = ::getaddrinfo(host.c_str(), port_string.c_str(), &hints, &results);
             if (gai_rc != 0) {
+                ETCD_LOG_ERROR("[async] [watch]", "getaddrinfo failed key={} host={} port={} error={}",
+                               watch_key,
+                               host,
+                               port,
+                               gai_strerror(gai_rc));
                 return;
             }
 
@@ -1218,8 +1287,18 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
                         ? network_config.request_timeout
                         : std::chrono::seconds(5));
                 if (connect_result.has_value()) {
+                    ETCD_LOG_INFO("[async] [watch]", "worker connected key={} host={} port={}",
+                                  watch_key,
+                                  host,
+                                  port);
                     break;
                 }
+
+                ETCD_LOG_WARN("[async] [watch]", "worker connect attempt failed key={} host={} port={} error={}",
+                              watch_key,
+                              host,
+                              port,
+                              connect_result.error().message());
 
                 (void)::close(fd);
                 fd = -1;
@@ -1227,6 +1306,10 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
 
             (void)::freeaddrinfo(results);
             if (fd < 0) {
+                ETCD_LOG_ERROR("[async] [watch]", "worker connect failed key={} host={} port={}",
+                               watch_key,
+                               host,
+                               port);
                 return;
             }
 
@@ -1234,10 +1317,12 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
                 ? std::min(network_config.request_timeout, std::chrono::milliseconds(1000))
                 : std::chrono::milliseconds(1000);
             if (!setSocketTimeouts(fd, io_timeout).has_value()) {
+                ETCD_LOG_ERROR("[async] [watch]", "set socket timeouts failed key={}", watch_key);
                 (void)::close(fd);
                 return;
             }
             if (!sendAll(fd, request).has_value()) {
+                ETCD_LOG_ERROR("[async] [watch]", "send watch request failed key={}", watch_key);
                 (void)::close(fd);
                 return;
             }
@@ -1300,10 +1385,16 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
 
                         auto parsed_headers = parseHttpHeaders(std::string_view(raw_header.data(), header_end));
                         if (!parsed_headers.has_value()) {
+                            ETCD_LOG_WARN("[async] [watch]", "parse response header failed key={} error={}",
+                                          watch_key,
+                                          parsed_headers.error().message());
                             break;
                         }
                         headers = parsed_headers.value();
                         if (headers->status_code < 200 || headers->status_code >= 300) {
+                            ETCD_LOG_WARN("[async] [watch]", "unexpected http status key={} status={}",
+                                          watch_key,
+                                          headers->status_code);
                             break;
                         }
                         if (headers->content_length.has_value()) {
@@ -1322,12 +1413,14 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
                     }
 
                     if (!process_body(incoming)) {
+                        ETCD_LOG_WARN("[async] [watch]", "process watch body stopped key={}", watch_key);
                         break;
                     }
                     continue;
                 }
 
                 if (recv_bytes == 0) {
+                    ETCD_LOG_INFO("[async] [watch]", "worker peer closed key={}", watch_key);
                     break;
                 }
                 if (errno == EINTR) {
@@ -1336,6 +1429,9 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
                 if (isTimeoutErrno(errno)) {
                     continue;
                 }
+                ETCD_LOG_ERROR("[async] [watch]", "recv failed key={} error={}",
+                               watch_key,
+                               std::strerror(errno));
                 break;
             }
 
@@ -1346,6 +1442,7 @@ EtcdBoolResult AsyncEtcdClient::startWatchWorker(
             }
 
             (void)::close(fd);
+            ETCD_LOG_INFO("[async] [watch]", "worker stopped key={}", watch_key);
         });
 
     {

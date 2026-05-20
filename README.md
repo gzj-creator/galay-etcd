@@ -42,7 +42,7 @@
 | C++ 标准 | C++23 | `cmake/option.cmake` |
 | CMake | `>= 3.20` | `CMakeLists.txt` |
 | 内部依赖 | `galay-kernel`、`galay-utils`、`galay-http` | `galay-etcd/CMakeLists.txt` |
-| 第三方依赖 | `spdlog`、`simdjson`（通过 `pkg-config simdjson`） | `galay-etcd/CMakeLists.txt` |
+| 第三方依赖 | `simdjson`（通过 `pkg-config simdjson`） | `galay-etcd/CMakeLists.txt` |
 | 默认构建项 | tests / benchmarks / examples 默认开启 | `cmake/option.cmake` |
 | module/import 编译 | 仅在受支持工具链下启用 | `cmake/option.cmake` |
 
@@ -148,7 +148,7 @@ GALAY_ETCD_BENCH_IO_SCHEDULERS=2 \
 
 - 想先跑起来：看 `docs/00-快速开始.md`
 - 想对 API 对账：看 `docs/02-API参考.md`
-- 想查 `EtcdLog` / `EtcdLoggerPtr` / `galay::etcd::internal` / `parseEndpoint()` / `import galay.etcd` 边界：看 `docs/02-API参考.md`
+- 想查 `galay::etcd::log::set/get` / `ETCD_LOG_*` / `galay::etcd::internal` / `parseEndpoint()` / `import galay.etcd` 边界：看 `docs/02-API参考.md`
 - 想找可运行文件与 target：看 `docs/04-示例代码.md`
 - 想看 benchmark 真正怎么跑：看 `docs/05-性能测试.md`
 - 想确认已知限制和生产边界：看 `docs/06-高级主题.md`

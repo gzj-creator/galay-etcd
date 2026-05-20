@@ -21,7 +21,7 @@
 安装面补充说明：
 
 - `galay-etcd/base/etcd_internal.h` 是源码树内部 helper 头，不属于安装/export 契约
-- `galay-etcd/base/etcd_log.h` 是可选日志辅助接口，提供 `EtcdLog` / `EtcdLoggerPtr`
+- `galay-etcd/base/etcd_log.h` 提供基于 `galay::kernel::BaseLogger` 的库级日志入口与 `ETCD_LOG_*` 埋点宏
 - `galay-etcd/module/module_prelude.hpp` 是 `galay-etcd/module/galay_etcd.cppm` 的 global module fragment 支撑头，不是 header 模式下的首选入口
 - `galay-etcd/module/galay_etcd.cppm` 是真实模块接口文件；它回答 module 模式下的公开导出边界
 
@@ -35,11 +35,10 @@
 
 `galay.etcd` 的 module 导出边界，以 `galay-etcd/module/galay_etcd.cppm` 中的 `export { ... }` 块为准：
 
-- 会被 `import galay.etcd;` 直接导出的头：`etcd_config.h`、`etcd_error.h`、`etcd_value.h`、`etcd_types.h`、`network_cfg.h`、`client_cfg.h`、`etcd_client.h`、`etcd_client.h`
-- 不在当前 module 导出边界内的安装头：`etcd_log.h`
+- 会被 `import galay.etcd;` 直接导出的头：`etcd_config.h`、`etcd_error.h`、`etcd_log.h`、`etcd_value.h`、`etcd_types.h`、`network_cfg.h`、`client_cfg.h`、`etcd_client.h`、`etcd_client.h`
 - `module_prelude.hpp` 虽然在 global module fragment 中 `#include` 了更多头，但它不是额外的导出清单
 
-因此，如果你需要日志 helper，当前应继续直接 `#include` 对应头文件，而不是只依赖 `import galay.etcd;`。`galay::etcd::internal` helper 仅供源码树内部（例如 `test/T6`）使用。
+`galay::etcd::internal` helper 仅供源码树内部（例如 `test/T6`）使用。
 
 ## 2. 基础类型与可选日志辅助
 
@@ -166,47 +165,39 @@ public:
 };
 ```
 
-### `EtcdLoggerPtr`
+### `galay::etcd::log`
 
 ```cpp
-using EtcdLoggerPtr = std::shared_ptr<spdlog::logger>;
-```
-
-`EtcdLoggerPtr` 是 `spdlog::logger` 的共享指针别名；它只在 `galay-etcd/base/etcd_log.h` 中声明，当前不属于 `galay.etcd` module 的直接导出内容。
-
-### `EtcdLog`
-
-```cpp
-class EtcdLog {
-public:
-    static EtcdLog* getInstance();
-    static void enable();
-    static void console();
-    static void console(const std::string& logger_name);
-    static void file(const std::string& log_file_path = "galay-etcd.log",
-                     const std::string& logger_name = "EtcdLogger",
-                     bool truncate = false);
-    static void disable();
-    static void setLogger(EtcdLoggerPtr logger);
-    EtcdLoggerPtr getLogger() const;
-};
+namespace galay::etcd::log {
+void set(::galay::kernel::BaseLogger::uptr logger);
+[[nodiscard]] ::galay::kernel::BaseLogger* get() noexcept;
+}
 ```
 
 方法语义：
 
-- `getInstance()` 返回进程内单例的裸指针；读取当前 logger 时需要调用 `EtcdLog::getInstance()->getLogger()`
-- `enable()` 只是 `console()` 的别名
-- `console()` 使用默认 logger 名 `EtcdLogger`
-- `console(logger_name)` 会先尝试 `spdlog::get(logger_name)`，找不到时再创建彩色控制台 logger；成功拿到 logger 后会套用库内默认 pattern / level
-- `file(log_file_path, logger_name, truncate)` 会创建一个新的文件 logger，并套用库内默认 pattern / level
-- `disable()` 会先把当前 logger level 设为 `off`，再清空单例里保存的指针
-- `setLogger(logger)` 只替换单例里保存的共享指针；它不会额外调用默认 pattern / level 配置
-- `getLogger()` 在互斥锁保护下返回当前 `EtcdLoggerPtr` 的拷贝
+- `set(logger)` 设置 galay-etcd 的库级 logger；传入 `nullptr` 等价于禁用日志。
+- `get()` 返回当前 logger 裸指针；生命周期由 `set()` 传入的 `std::unique_ptr` 管理，调用方不得释放。
+- 该入口只影响 `galay-etcd` 内部 `ETCD_LOG_*` 埋点，不会启用 `galay-kernel`、`galay-http` 或其他库的日志。
+- `set()` 应在创建 client 前的单线程初始化阶段调用；运行期替换 logger 时调用方需要自行保证同步。
+- 未设置 logger 或日志级别被过滤时，埋点不会执行 `std::format`，也不会求值格式化参数表达式。
+
+日志宏：
+
+```cpp
+ETCD_LOG_ENABLED(level)
+ETCD_LOG_TRACE(tag, fmt, ...)
+ETCD_LOG_DEBUG(tag, fmt, ...)
+ETCD_LOG_INFO(tag, fmt, ...)
+ETCD_LOG_WARN(tag, fmt, ...)
+ETCD_LOG_ERROR(tag, fmt, ...)
+```
 
 使用边界：
 
-- 这是**独立的可选 helper**；当前 `EtcdClient` / `AsyncEtcdClient` 的公开实现不会自动从这个单例中取 logger
-- 如果你选择 module 方式接入主 API，日志 helper 仍需直接 `#include "galay-etcd/base/etcd_log.h"`
+- 用户负责实现 `galay::kernel::BaseLogger` 并通过 `galay::etcd::log::set()` 注入。
+- 日志标签统一带有 `[etcd]` 前缀，内部会继续追加 `[sync]`、`[async]`、`[watch]` 等子标签。
+- `galay.etcd` module 已导出 `etcd_log.h`；header 模式也可以直接 `#include "galay-etcd/base/etcd_log.h"`。
 
 ## 3. 同步客户端
 

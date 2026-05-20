@@ -22,16 +22,6 @@
 #include <vector>
 #endif
 
-#if __has_include(<spdlog/sinks/stdout_color_sinks.h>)
-#include <spdlog/sinks/stdout_color_sinks.h>
-#endif
-#if __has_include(<spdlog/sinks/basic_file_sink.h>)
-#include <spdlog/sinks/basic_file_sink.h>
-#endif
-#if __has_include(<spdlog/spdlog.h>)
-#include <spdlog/spdlog.h>
-#endif
-
 #if __has_include(<galay-http/kernel/http/http_session.h>)
 #include <galay-http/kernel/http/http_session.h>
 #endif

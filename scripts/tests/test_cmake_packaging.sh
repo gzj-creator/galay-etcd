@@ -69,17 +69,6 @@ set(PACKAGE_VERSION_COMPATIBLE TRUE)
 set(PACKAGE_VERSION_EXACT TRUE)
 EOF
 
-write_file "$DUMMY_PREFIX/lib/cmake/spdlog/spdlogConfig.cmake" <<'EOF'
-if(NOT TARGET spdlog::spdlog)
-    add_library(spdlog::spdlog INTERFACE IMPORTED)
-endif()
-EOF
-
-write_file "$DUMMY_PREFIX/lib/cmake/spdlog/spdlogConfigVersion.cmake" <<'EOF'
-set(PACKAGE_VERSION "1.0.0")
-set(PACKAGE_VERSION_COMPATIBLE TRUE)
-EOF
-
 write_file "$DUMMY_PREFIX/lib/pkgconfig/simdjson.pc" <<EOF
 prefix=$DUMMY_PREFIX
 exec_prefix=$DUMMY_PREFIX

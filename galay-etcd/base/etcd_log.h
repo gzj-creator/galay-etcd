@@ -1,109 +1,74 @@
+/**
+ * @file etcd_log.h
+ * @brief galay-etcd 独立日志入口与埋点宏
+ */
+
 #ifndef GALAY_ETCD_LOG_H
 #define GALAY_ETCD_LOG_H
 
-#include <memory>
-#include <mutex>
-#include <string>
+#include "galay-kernel/common/log_macro.h"
 
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-
-namespace galay::etcd
+namespace galay::etcd::detail
 {
+struct EtcdLogTag;
+} // namespace galay::etcd::detail
 
-using EtcdLoggerPtr = std::shared_ptr<spdlog::logger>;
-
-class EtcdLog
+namespace galay::etcd::log
 {
-public:
-    static EtcdLog* getInstance()
-    {
-        static EtcdLog instance;
-        return &instance;
-    }
+using Slot = ::galay::kernel::LoggerSlot<::galay::etcd::detail::EtcdLogTag>;
 
-    static void enable()
-    {
-        console();
-    }
+/**
+ * @brief 设置 galay-etcd 的库级 logger
+ *
+ * @details 只影响 `ETCD_LOG_*` 宏产生的日志，不会启用 kernel、http
+ * 或其他 galay 库日志。推荐在创建 etcd client 之前的单线程初始化阶段调用。
+ *
+ * @param logger 用户自定义 logger；传入 nullptr 时禁用 galay-etcd 日志。
+ */
+void set(::galay::kernel::BaseLogger::uptr logger);
 
-    static void console()
-    {
-        console("EtcdLogger");
-    }
+/**
+ * @brief 获取 galay-etcd 当前 logger
+ *
+ * @return 当前 logger 指针；未设置时返回 nullptr。
+ *
+ * @note 返回指针的生命周期由 `set()` 注入的 unique_ptr 管理，调用方不得释放。
+ */
+[[nodiscard]] ::galay::kernel::BaseLogger* get() noexcept;
+} // namespace galay::etcd::log
 
-    static void console(const std::string& logger_name)
-    {
-        auto instance = getInstance();
-        std::lock_guard<std::mutex> lock(instance->m_mutex);
-        try {
-            auto logger = spdlog::get(logger_name);
-            if (!logger) {
-                logger = spdlog::stdout_color_mt(logger_name);
-            }
-            applyDefault(logger);
-            instance->m_logger = std::move(logger);
-        } catch (const spdlog::spdlog_ex&) {
-            instance->m_logger = spdlog::get(logger_name);
-        }
-    }
+/// @brief 判断指定级别的 galay-etcd 日志是否会实际写入
+#define ETCD_LOG_ENABLED(level)                                                  \
+    GALAY_LOG_ENABLED(::galay::etcd::log::get, level)
 
-    static void file(const std::string& log_file_path = "galay-etcd.log",
-                     const std::string& logger_name = "EtcdLogger",
-                     bool truncate = false)
-    {
-        auto instance = getInstance();
-        std::lock_guard<std::mutex> lock(instance->m_mutex);
-        auto logger = std::make_shared<spdlog::logger>(
-            logger_name,
-            std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_file_path, !truncate));
-        applyDefault(logger);
-        instance->m_logger = std::move(logger);
-    }
+/// @brief galay-etcd 追踪日志宏，用于最详细的协议调试信息
+#define ETCD_LOG_TRACE(tag, ...)                                                 \
+    GALAY_LOG_WITH_LOGGER(::galay::etcd::log::get,                               \
+                          ::galay::kernel::LogLevel::kTrace, "[etcd] " tag,      \
+                          __VA_ARGS__)
 
-    static void disable()
-    {
-        auto instance = getInstance();
-        std::lock_guard<std::mutex> lock(instance->m_mutex);
-        if (instance->m_logger) {
-            instance->m_logger->set_level(spdlog::level::off);
-        }
-        instance->m_logger.reset();
-    }
+/// @brief galay-etcd 调试日志宏，用于记录请求、响应和状态转换
+#define ETCD_LOG_DEBUG(tag, ...)                                                 \
+    GALAY_LOG_WITH_LOGGER(::galay::etcd::log::get,                               \
+                          ::galay::kernel::LogLevel::kDebug, "[etcd] " tag,      \
+                          __VA_ARGS__)
 
-    static void setLogger(EtcdLoggerPtr logger)
-    {
-        auto instance = getInstance();
-        std::lock_guard<std::mutex> lock(instance->m_mutex);
-        instance->m_logger = std::move(logger);
-    }
+/// @brief galay-etcd 信息日志宏，用于记录连接和 watch 生命周期事件
+#define ETCD_LOG_INFO(tag, ...)                                                  \
+    GALAY_LOG_WITH_LOGGER(::galay::etcd::log::get,                               \
+                          ::galay::kernel::LogLevel::kInfo, "[etcd] " tag,       \
+                          __VA_ARGS__)
 
-    EtcdLoggerPtr getLogger() const
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        return m_logger;
-    }
+/// @brief galay-etcd 警告日志宏，用于表示协议错误、服务错误和可恢复异常
+#define ETCD_LOG_WARN(tag, ...)                                                  \
+    GALAY_LOG_WITH_LOGGER(::galay::etcd::log::get,                               \
+                          ::galay::kernel::LogLevel::kWarn, "[etcd] " tag,       \
+                          __VA_ARGS__)
 
-private:
-    static void applyDefault(const EtcdLoggerPtr& logger)
-    {
-        if (!logger) {
-            return;
-        }
-        logger->set_pattern("[%Y-%m-%d %T.%e] [%^%L%$] [%s:%#] %v");
-#ifdef ENABLE_DEBUG
-        logger->set_level(spdlog::level::debug);
-#else
-        logger->set_level(spdlog::level::info);
-#endif
-    }
-
-private:
-    mutable std::mutex m_mutex;
-    EtcdLoggerPtr m_logger;
-};
-
-} // namespace galay::etcd
+/// @brief galay-etcd 错误日志宏，用于表示连接、读写或解析失败
+#define ETCD_LOG_ERROR(tag, ...)                                                 \
+    GALAY_LOG_WITH_LOGGER(::galay::etcd::log::get,                               \
+                          ::galay::kernel::LogLevel::kError, "[etcd] " tag,      \
+                          __VA_ARGS__)
 
 #endif // GALAY_ETCD_LOG_H

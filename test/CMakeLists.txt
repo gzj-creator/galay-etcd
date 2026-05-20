@@ -36,3 +36,4 @@ galay_etcd_apply_cxx(T8-AsyncBenchmarkSmoke)
 add_test(NAME T8-AsyncBenchmarkSmoke COMMAND $<TARGET_FILE:T8-AsyncBenchmarkSmoke>)
 
 galay_etcd_add_test_target(T9-AsyncEtcdTaskWatch t9_task_watch.cc)
+galay_etcd_add_test_target(T10-EtcdLog t10_log.cc)
