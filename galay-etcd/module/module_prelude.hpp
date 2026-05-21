@@ -1,3 +1,14 @@
+/**
+ * @file module_prelude.hpp
+ * @brief galay-etcd 模块统一头文件包含前置
+ * @author galay-etcd
+ * @version 1.0.0
+ *
+ * @details 作为 galay-etcd 模块的总入口头文件，使用 __has_include 条件编译
+ *          按需包含标准库头文件和项目内部头文件。
+ *          外部使用方只需包含此文件即可获得 galay-etcd 的完整 API。
+ */
+
 #pragma once
 
 #if __has_include(<chrono>)

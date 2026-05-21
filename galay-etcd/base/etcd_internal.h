@@ -1,3 +1,19 @@
+/**
+ * @file etcd_internal.h
+ * @brief etcd 客户端内部工具函数集
+ * @author galay-etcd
+ * @version 1.0.0
+ *
+ * @details 提供 etcd 客户端内部使用的辅助函数，包括：
+ *          - JSON 解析与字段提取（基于 simdjson）
+ *          - Base64 编解码
+ *          - 端点地址解析
+ *          - etcd v3 REST API 请求体构建
+ *          - etcd v3 REST API 响应体解析
+ *          - Watch 事件解析
+ *          这些函数仅供内部实现使用，不对外暴露。
+ */
+
 #ifndef GALAY_ETCD_INTERNAL_H
 #define GALAY_ETCD_INTERNAL_H
 
@@ -26,6 +42,11 @@
 namespace galay::etcd::internal
 {
 
+/**
+ * @brief 将字符串视图解析为有符号 64 位整数
+ * @param value 待解析的字符串视图
+ * @return 解析成功返回整数值，失败返回 std::nullopt
+ */
 inline std::optional<int64_t> parseSignedInt(std::string_view value)
 {
     if (value.empty()) {
@@ -41,6 +62,13 @@ inline std::optional<int64_t> parseSignedInt(std::string_view value)
     return parsed;
 }
 
+/**
+ * @brief 从 simdjson 元素中提取 64 位整数
+ * @details 依次尝试 int64、uint64 和字符串三种类型，
+ *          若为 uint64 则检查是否在 int64 范围内。
+ * @param element simdjson JSON 元素
+ * @return 成功提取返回整数值，失败返回 std::nullopt
+ */
 inline std::optional<int64_t> asInt64(const simdjson::dom::element& element)
 {
     auto int64_result = element.get_int64();
@@ -63,6 +91,12 @@ inline std::optional<int64_t> asInt64(const simdjson::dom::element& element)
     return std::nullopt;
 }
 
+/**
+ * @brief 从 JSON 对象中查找并提取整数字段
+ * @param object JSON 对象
+ * @param field 字段名
+ * @return 成功提取返回整数值，字段不存在或类型不匹配返回 std::nullopt
+ */
 inline std::optional<int64_t> findIntField(const simdjson::dom::object& object, std::string_view field)
 {
     auto field_result = object[field];
@@ -72,6 +106,12 @@ inline std::optional<int64_t> findIntField(const simdjson::dom::object& object, 
     return asInt64(field_result.value_unsafe());
 }
 
+/**
+ * @brief 从 JSON 对象中查找并提取字符串字段
+ * @param object JSON 对象
+ * @param field 字段名
+ * @return 成功提取返回字符串值，字段不存在或类型不匹配返回 std::nullopt
+ */
 inline std::optional<std::string> findStringField(const simdjson::dom::object& object, std::string_view field)
 {
     auto field_result = object[field];
@@ -86,6 +126,12 @@ inline std::optional<std::string> findStringField(const simdjson::dom::object& o
     return std::string(string_result.value_unsafe());
 }
 
+/**
+ * @brief 创建 JSON 解析错误
+ * @param context 错误上下文描述
+ * @param error simdjson 错误码
+ * @return 包含上下文和错误描述的 EtcdError
+ */
 inline EtcdError makeJsonParseError(const std::string& context, simdjson::error_code error)
 {
     return EtcdError(
@@ -93,6 +139,14 @@ inline EtcdError makeJsonParseError(const std::string& context, simdjson::error_
         context + ": " + std::string(simdjson::error_message(error)));
 }
 
+/**
+ * @brief 将字符串解析为 JSON 对象
+ * @param body JSON 字符串
+ * @param parser JSON 解析器
+ * @param parse_error 输出参数，解析失败时写入错误信息（可为 nullptr）
+ * @param context 错误上下文描述
+ * @return 成功返回 JSON 对象，失败返回 std::nullopt
+ */
 inline std::optional<simdjson::dom::object> parseJsonObject(
     const std::string& body,
     simdjson::dom::parser& parser,
@@ -118,6 +172,12 @@ inline std::optional<simdjson::dom::object> parseJsonObject(
     return object_result.value_unsafe();
 }
 
+/**
+ * @brief 规范化 API 路径前缀
+ * @details 确保前缀以 '/' 开头且不以 '/' 结尾，空字符串默认为 "/v3"。
+ * @param prefix 原始前缀字符串
+ * @return 规范化后的前缀字符串
+ */
 inline std::string normalizeApiPrefix(std::string prefix)
 {
     if (prefix.empty()) {
@@ -132,6 +192,13 @@ inline std::string normalizeApiPrefix(std::string prefix)
     return prefix;
 }
 
+/**
+ * @brief 计算 etcd 前缀查询的范围结束键
+ * @details 根据 etcd 的范围查询语义，计算给定键之后的前缀范围结束键。
+ *          从右向左找到第一个小于 0xFF 的字节并加 1，截断该字节之后的内容。
+ * @param key 前缀键
+ * @return 范围结束键；若所有字节均为 0xFF 则返回单个 '\0'
+ */
 inline std::string makePrefixRangeEnd(std::string key)
 {
     for (std::ptrdiff_t i = static_cast<std::ptrdiff_t>(key.size()) - 1; i >= 0; --i) {
@@ -145,11 +212,21 @@ inline std::string makePrefixRangeEnd(std::string key)
     return std::string(1, '\0');
 }
 
+/**
+ * @brief 将数据编码为 Base64 字符串
+ * @param data 待编码的数据视图
+ * @return Base64 编码后的字符串
+ */
 inline std::string encodeBase64(std::string_view data)
 {
     return galay::utils::Base64Util::Base64EncodeView(data);
 }
 
+/**
+ * @brief 将 Base64 字符串解码为原始数据
+ * @param data Base64 编码的字符串视图
+ * @return 解码成功返回解码后的字符串，解码失败返回 std::nullopt
+ */
 inline std::optional<std::string> decodeBase64(std::string_view data)
 {
     try {
@@ -161,14 +238,26 @@ inline std::optional<std::string> decodeBase64(std::string_view data)
     }
 }
 
+/**
+ * @brief 端点地址解析结果
+ * @details 存储 http/https 端点地址的解析结果，
+ *          包含主机名、端口、是否为安全连接以及是否为 IPv6 地址。
+ */
 struct ParsedEndpoint
 {
-    std::string host;
-    uint16_t port = 0;
-    bool secure = false;
-    bool ipv6 = false;
+    std::string host;      ///< 主机名或 IP 地址
+    uint16_t port = 0;     ///< 端口号
+    bool secure = false;   ///< 是否为 HTTPS 连接
+    bool ipv6 = false;     ///< 是否为 IPv6 地址
 };
 
+/**
+ * @brief 解析 etcd 端点地址
+ * @details 支持格式：http(s)://host:port、http(s)://[ipv6]:port，
+ *          未指定端口时 http 默认 80，https 默认 443。
+ * @param endpoint 端点地址字符串
+ * @return 解析成功返回 ParsedEndpoint，格式错误返回错误消息
+ */
 inline std::expected<ParsedEndpoint, std::string> parseEndpoint(const std::string& endpoint)
 {
     thread_local const std::regex kEndpointRegex(
@@ -214,6 +303,15 @@ inline std::expected<ParsedEndpoint, std::string> parseEndpoint(const std::strin
     return parsed;
 }
 
+/**
+ * @brief 构建 HTTP Host 头
+ * @details 根据 IPv4/IPv6 格式化主机名和端口为 Host 头字符串，
+ *          IPv6 地址会被方括号包裹。
+ * @param host 主机名
+ * @param port 端口号
+ * @param ipv6 是否为 IPv6 地址
+ * @return 格式化的 Host 头字符串
+ */
 inline std::string buildHostHeader(const std::string& host, uint16_t port, bool ipv6)
 {
     if (ipv6) {
@@ -222,12 +320,25 @@ inline std::string buildHostHeader(const std::string& host, uint16_t port, bool 
     return host + ":" + std::to_string(port);
 }
 
+/**
+ * @brief 获取线程本地的 JSON 解析器实例
+ * @details 返回 thread_local 的 simdjson 解析器，避免频繁创建和销毁解析器。
+ * @return 线程本地的 simdjson 解析器引用
+ */
 inline simdjson::dom::parser& threadLocalJsonParser()
 {
     thread_local simdjson::dom::parser parser;
     return parser;
 }
 
+/**
+ * @brief 解析 etcd 成功响应的 JSON 对象
+ * @details 解析 JSON 响应体并检查是否包含 etcd 服务端错误（code != 0），
+ *          若存在服务端错误则返回 Server 类型的 EtcdError。
+ * @param body JSON 响应体字符串
+ * @param context 错误上下文描述
+ * @return 成功返回 JSON 对象，失败返回 EtcdError
+ */
 inline std::expected<simdjson::dom::object, EtcdError> parseEtcdSuccessObject(
     const std::string& body,
     const std::string& context)
@@ -251,6 +362,12 @@ inline std::expected<simdjson::dom::object, EtcdError> parseEtcdSuccessObject(
     return root.value();
 }
 
+/**
+ * @brief 从 JSON 对象中解析键值对(kvs)数组
+ * @param object JSON 对象
+ * @param context 错误上下文描述
+ * @return 成功返回键值对列表，字段不存在返回空列表，解析失败返回 EtcdError
+ */
 inline std::expected<std::vector<EtcdKeyValue>, EtcdError> parseKvsFromObject(
     const simdjson::dom::object& object,
     const std::string& context)
@@ -313,6 +430,14 @@ inline std::expected<std::vector<EtcdKeyValue>, EtcdError> parseKvsFromObject(
     return kvs;
 }
 
+/**
+ * @brief 解析单个键值对 JSON 对象
+ * @details 从 JSON 对象中提取 key、value（Base64 解码）以及
+ *          create_revision、mod_revision、version、lease 等元数据。
+ * @param kv_object 键值对 JSON 对象
+ * @param context 错误上下文描述
+ * @return 成功返回 EtcdKeyValue，解析失败返回 EtcdError
+ */
 inline std::expected<EtcdKeyValue, EtcdError> parseKvObject(
     const simdjson::dom::object& kv_object,
     const std::string& context)
@@ -343,6 +468,13 @@ inline std::expected<EtcdKeyValue, EtcdError> parseKvObject(
     return item;
 }
 
+/**
+ * @brief 快速判断响应体是否可能包含 etcd 错误字段
+ * @details 通过检查 "code"、"message"、"error" 关键字，
+ *          用于在解析前快速判断是否需要完整解析。
+ * @param body HTTP 响应体
+ * @return 可能包含错误字段返回 true，否则返回 false
+ */
 inline bool maybeContainsEtcdErrorFields(const std::string& body)
 {
     return body.find("\"code\"") != std::string::npos ||
@@ -350,6 +482,15 @@ inline bool maybeContainsEtcdErrorFields(const std::string& body)
         body.find("\"error\"") != std::string::npos;
 }
 
+/**
+ * @brief 构建 Put 请求的 JSON 请求体
+ * @details 将键和值进行 Base64 编码，可选地附加租约 ID，
+ *          生成符合 etcd v3 REST API 格式的请求体。
+ * @param key 键名
+ * @param value 值
+ * @param lease_id 可选的租约 ID
+ * @return 成功返回 JSON 请求体字符串，参数无效返回 EtcdError
+ */
 inline std::expected<std::string, EtcdError> buildPutRequestBody(
     std::string_view key,
     std::string_view value,
@@ -380,6 +521,14 @@ inline std::expected<std::string, EtcdError> buildPutRequestBody(
     return body;
 }
 
+/**
+ * @brief 构建 Range(Get) 请求的 JSON 请求体
+ * @details 支持精确匹配和前缀查询，可选返回数量限制。
+ * @param key 键名
+ * @param prefix 是否为前缀查询
+ * @param limit 返回数量限制
+ * @return 成功返回 JSON 请求体字符串，参数无效返回 EtcdError
+ */
 inline std::expected<std::string, EtcdError> buildGetRequestBody(
     std::string_view key,
     bool prefix = false,
@@ -416,6 +565,13 @@ inline std::expected<std::string, EtcdError> buildGetRequestBody(
     return body;
 }
 
+/**
+ * @brief 构建 DeleteRange 请求的 JSON 请求体
+ * @details 支持精确删除和前缀删除。
+ * @param key 键名
+ * @param prefix 是否为前缀删除
+ * @return 成功返回 JSON 请求体字符串，参数无效返回 EtcdError
+ */
 inline std::expected<std::string, EtcdError> buildDeleteRequestBody(
     std::string_view key,
     bool prefix = false)
@@ -444,6 +600,11 @@ inline std::expected<std::string, EtcdError> buildDeleteRequestBody(
     return body;
 }
 
+/**
+ * @brief 构建 LeaseGrant 请求的 JSON 请求体
+ * @param ttl_seconds 租约的存活时间（秒）
+ * @return 成功返回 JSON 请求体字符串，参数无效返回 EtcdError
+ */
 inline std::expected<std::string, EtcdError> buildLeaseGrantRequestBody(int64_t ttl_seconds)
 {
     if (ttl_seconds <= 0) {
@@ -452,6 +613,11 @@ inline std::expected<std::string, EtcdError> buildLeaseGrantRequestBody(int64_t 
     return std::string("{\"TTL\":") + std::to_string(ttl_seconds) + "}";
 }
 
+/**
+ * @brief 构建 LeaseKeepAlive 请求的 JSON 请求体
+ * @param lease_id 需要续期的租约 ID
+ * @return 成功返回 JSON 请求体字符串，参数无效返回 EtcdError
+ */
 inline std::expected<std::string, EtcdError> buildLeaseKeepAliveRequestBody(int64_t lease_id)
 {
     if (lease_id <= 0) {
@@ -460,6 +626,12 @@ inline std::expected<std::string, EtcdError> buildLeaseKeepAliveRequestBody(int6
     return std::string("{\"ID\":\"") + std::to_string(lease_id) + "\"}";
 }
 
+/**
+ * @brief 构建 Watch 创建请求的 JSON 请求体
+ * @details 将键进行 Base64 编码，生成包含 create_request 的请求体。
+ * @param key 需要监听的键
+ * @return 成功返回 JSON 请求体字符串，参数无效返回 EtcdError
+ */
 inline std::expected<std::string, EtcdError> buildWatchRequestBody(std::string_view key)
 {
     if (key.empty()) {
@@ -469,6 +641,13 @@ inline std::expected<std::string, EtcdError> buildWatchRequestBody(std::string_v
     return std::string("{\"create_request\":{\"key\":\"") + encodeBase64(key) + "\"}}";
 }
 
+/**
+ * @brief 构建 Pipeline 事务(Txn) 请求的 JSON 请求体
+ * @details 将多个操作（Put/Get/Delete）编码为 etcd v3 事务格式，
+ *          所有操作放入 success 分支，compare 为空（无条件执行）。
+ * @param operations Pipeline 操作列表
+ * @return 成功返回 JSON 请求体字符串，参数无效返回 EtcdError
+ */
 inline std::expected<std::string, EtcdError> buildTxnBody(std::span<const PipelineOp> operations)
 {
     if (operations.empty()) {
@@ -545,11 +724,24 @@ inline std::expected<std::string, EtcdError> buildTxnBody(std::span<const Pipeli
     return body;
 }
 
+/**
+ * @brief 构建 Pipeline 事务(Txn) 请求的 JSON 请求体（vector 重载）
+ * @param operations Pipeline 操作列表
+ * @return 成功返回 JSON 请求体字符串，参数无效返回 EtcdError
+ */
 inline std::expected<std::string, EtcdError> buildTxnBody(const std::vector<PipelineOp>& operations)
 {
     return buildTxnBody(std::span<const PipelineOp>(operations.data(), operations.size()));
 }
 
+/**
+ * @brief 解析 Pipeline 事务响应
+ * @details 根据 succeeded 字段判断事务是否成功，然后逐条解析
+ *          responses 数组中的 Put/Get/Delete 操作结果。
+ * @param root 响应 JSON 对象
+ * @param operation_types 各操作对应的类型列表
+ * @return 成功返回 Pipeline 结果列表，失败返回 EtcdError
+ */
 inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineResponses(
     const simdjson::dom::object& root,
     std::span<const PipelineOpType> operation_types)
@@ -661,6 +853,13 @@ inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineRe
     return pipeline_results;
 }
 
+/**
+ * @brief 解析 Pipeline 事务响应（PipelineOp 重载）
+ * @details 从操作列表中提取类型信息后委托给类型版本的重载。
+ * @param root 响应 JSON 对象
+ * @param operations Pipeline 操作列表
+ * @return 成功返回 Pipeline 结果列表，失败返回 EtcdError
+ */
 inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineResponses(
     const simdjson::dom::object& root,
     std::span<const PipelineOp> operations)
@@ -673,6 +872,12 @@ inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineRe
     return parsePipelineResponses(root, std::span<const PipelineOpType>(operation_types.data(), operation_types.size()));
 }
 
+/**
+ * @brief 解析 Put 操作响应
+ * @details 检查响应体是否包含错误字段，若有则完整解析并返回错误。
+ * @param body HTTP 响应体
+ * @return 成功返回 void，失败返回 EtcdError
+ */
 inline std::expected<void, EtcdError> parsePutResponse(const std::string& body)
 {
     if (!maybeContainsEtcdErrorFields(body)) {
@@ -686,6 +891,12 @@ inline std::expected<void, EtcdError> parsePutResponse(const std::string& body)
     return {};
 }
 
+/**
+ * @brief 解析 Range(Get) 操作响应
+ * @details 解析响应体中的 kvs 数组，返回键值对列表。
+ * @param body HTTP 响应体
+ * @return 成功返回键值对列表，失败返回 EtcdError
+ */
 inline std::expected<std::vector<EtcdKeyValue>, EtcdError> parseGetResponseKvs(const std::string& body)
 {
     auto root = parseEtcdSuccessObject(body, "parse get response");
@@ -695,6 +906,12 @@ inline std::expected<std::vector<EtcdKeyValue>, EtcdError> parseGetResponseKvs(c
     return parseKvsFromObject(root.value(), "parse get response");
 }
 
+/**
+ * @brief 解析 DeleteRange 操作响应
+ * @details 从响应体中提取 deleted 字段，返回删除的键数量。
+ * @param body HTTP 响应体
+ * @return 成功返回删除数量，失败返回 EtcdError
+ */
 inline std::expected<int64_t, EtcdError> parseDeleteResponseDeletedCount(const std::string& body)
 {
     auto root = parseEtcdSuccessObject(body, "parse delete response");
@@ -704,6 +921,12 @@ inline std::expected<int64_t, EtcdError> parseDeleteResponseDeletedCount(const s
     return findIntField(root.value(), "deleted").value_or(0);
 }
 
+/**
+ * @brief 解析 LeaseGrant 操作响应
+ * @details 从响应体中提取 ID 字段，返回分配的租约 ID。
+ * @param body HTTP 响应体
+ * @return 成功返回租约 ID，失败返回 EtcdError
+ */
 inline std::expected<int64_t, EtcdError> parseLeaseGrantResponseId(const std::string& body)
 {
     auto root = parseEtcdSuccessObject(body, "parse lease grant response");
@@ -718,6 +941,13 @@ inline std::expected<int64_t, EtcdError> parseLeaseGrantResponseId(const std::st
     return lease_id.value();
 }
 
+/**
+ * @brief 解析 LeaseKeepAlive 操作响应
+ * @details 从响应体中提取 ID 字段并与期望的租约 ID 进行比对。
+ * @param body HTTP 响应体
+ * @param expected_lease_id 期望续期的租约 ID
+ * @return 成功返回租约 ID，ID 不匹配或解析失败返回 EtcdError
+ */
 inline std::expected<int64_t, EtcdError> parseLeaseKeepAliveResponseId(
     const std::string& body,
     int64_t expected_lease_id)
@@ -734,6 +964,13 @@ inline std::expected<int64_t, EtcdError> parseLeaseKeepAliveResponseId(
     return expected_lease_id;
 }
 
+/**
+ * @brief 解析 Pipeline 事务(Txn) 响应（操作类型版本）
+ * @details 先解析顶层响应体，再委托给 parsePipelineResponses 进行逐条解析。
+ * @param body HTTP 响应体
+ * @param operation_types 各操作对应的类型列表
+ * @return 成功返回 Pipeline 结果列表，失败返回 EtcdError
+ */
 inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineTxnResponse(
     const std::string& body,
     std::span<const PipelineOpType> operation_types)
@@ -745,6 +982,13 @@ inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineTx
     return parsePipelineResponses(root.value(), operation_types);
 }
 
+/**
+ * @brief 解析 Pipeline 事务(Txn) 响应（PipelineOp 版本）
+ * @details 先解析顶层响应体，再委托给 parsePipelineResponses 进行逐条解析。
+ * @param body HTTP 响应体
+ * @param operations Pipeline 操作列表
+ * @return 成功返回 Pipeline 结果列表，失败返回 EtcdError
+ */
 inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineTxnResponse(
     const std::string& body,
     std::span<const PipelineOp> operations)
@@ -756,6 +1000,14 @@ inline std::expected<std::vector<PipelineItemResult>, EtcdError> parsePipelineTx
     return parsePipelineResponses(root.value(), operations);
 }
 
+/**
+ * @brief 解析 Watch 响应
+ * @details 解析 watch 事件流的单个 JSON 响应，提取 watch_id、created、canceled、
+ *          compact_revision 等元信息，以及事件列表中每个事件的类型(PUT/DELETE)
+ *          和键值对（包含可选的 prev_kv）。
+ * @param body Watch 响应体字符串
+ * @return 成功返回 EtcdWatchResponse，解析失败返回 EtcdError
+ */
 inline std::expected<EtcdWatchResponse, EtcdError> parseWatchResponse(const std::string& body)
 {
     EtcdError parse_error(EtcdErrorType::Success);
